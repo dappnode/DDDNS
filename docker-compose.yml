@@ -1,0 +1,13 @@
+version: '3.4'
+services:
+  dddns:
+    build: .
+    image: 'dddns:0.0.1'
+    volumes:
+      - 'data:/data'
+    ports:
+      - '45678:45678'
+    network_mode: host
+
+volumes:
+  data: {}

@@ -1,4 +1,4 @@
-module github.com/libp2p/go-libp2p-examples
+module github.com/dappnode/dddns
 
 require (
 	github.com/ethereum/go-ethereum v1.9.10

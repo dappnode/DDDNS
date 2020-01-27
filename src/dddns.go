@@ -11,14 +11,15 @@ import (
 	"flag"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"os/exec"
-	"regexp"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
@@ -67,7 +68,7 @@ func readData(rw *bufio.ReadWriter) {
 	for {
 		message, err := rw.ReadString('\n')
 		if err != nil {
-			fmt.Println("Error reading from buffer: ",err)
+			fmt.Println("Error reading from buffer: ", err)
 		}
 
 		decoded, err := base64.StdEncoding.DecodeString(message)
@@ -78,8 +79,8 @@ func readData(rw *bufio.ReadWriter) {
 		if message != "\n" {
 			// Green console colour:        \x1b[32m
 			// Reset console colour:        \x1b[0m
-			logger.Info(fmt.Sprintf("Receiving encrypted msg: \x1b[34m%s\x1b[0m",message))
-			
+			logger.Info(fmt.Sprintf("Receiving encrypted msg: \x1b[34m%s\x1b[0m", message))
+
 		}
 		keyfile := filepath.Join(config.DataDir, "nodekey")
 
@@ -95,8 +96,7 @@ func readData(rw *bufio.ReadWriter) {
 		if err != nil {
 			logger.Error(err)
 		}
-		logger.Info(fmt.Sprintf("decrypted message received: \x1b[34m%s\x1b[0m",decryptMessage))
-
+		logger.Info(fmt.Sprintf("decrypted message received: \x1b[34m%s\x1b[0m", decryptMessage))
 
 		if !*client {
 
@@ -118,20 +118,20 @@ func readData(rw *bufio.ReadWriter) {
 			}
 			responsePubKey := ecies.ImportECDSAPublic(desPuBKey)
 
-			cmd := exec.Command("ip", "route", "get","1")
+			cmd := exec.Command("ip", "route", "get", "1")
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				logger.Error("cmd.Run() failed with %s\n", err)
 			}
 
-			reg := regexp.MustCompile(`src (.*) uid`) 
-  
-			ipTmp:= reg.FindString(string(out))
-			reg2 := regexp.MustCompile(` (.*) `) 
+			reg := regexp.MustCompile(`src (.*) uid`)
+
+			ipTmp := reg.FindString(string(out))
+			reg2 := regexp.MustCompile(` (.*) `)
 			ip := strings.TrimSpace(reg2.FindString(string(ipTmp)))
 			if err != nil {
-                                logger.Error("cmd.Run() failed with %s\n", err)
-                        }
+				logger.Error("cmd.Run() failed with %s\n", err)
+			}
 
 			m := Message{
 				Type:      "IP",
@@ -145,7 +145,6 @@ func readData(rw *bufio.ReadWriter) {
 			if err != nil {
 				panic(err)
 			}
-
 
 			message := b
 
@@ -191,6 +190,25 @@ func writeData(rw *bufio.ReadWriter) {
 			panic(err)
 		}
 	}
+}
+
+func IsPublicIP(IP net.IP) bool {
+	if IP.IsLoopback() || IP.IsLinkLocalMulticast() || IP.IsLinkLocalUnicast() {
+		return false
+	}
+	if ip4 := IP.To4(); ip4 != nil {
+		switch {
+		case ip4[0] == 10:
+			return false
+		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
+			return false
+		case ip4[0] == 192 && ip4[1] == 168:
+			return false
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 func main() {
@@ -240,8 +258,8 @@ func main() {
 	//address := eth.PubkeyToAddress(key.PublicKey).Hex()
 	cpk := eth.CompressPubkey(&key.PublicKey)
 	address := hexutil.Encode(cpk)
-	
-	logger.Info(fmt.Sprintf("Public Address: \x1b[32m%s\x1b[0m",address))
+
+	logger.Info(fmt.Sprintf("Public Address: \x1b[32m%s\x1b[0m", address))
 
 	// Get the private key
 	privateKey := hex.EncodeToString(key.D.Bytes())
@@ -259,7 +277,7 @@ func main() {
 		panic(err)
 	}
 
-	logger.Info(fmt.Sprintf("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m",host.ID()))
+	logger.Info(fmt.Sprintf("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", host.ID()))
 
 	// Set a function as stream handler. This function is called when a peer
 	// initiates a connection and starts a stream with this peer.
@@ -299,7 +317,6 @@ func main() {
 	}
 	wg.Wait()
 
-
 	// We use a rendezvous point "meet me here" to announce our location.
 	// This is like telling your friends to meet you at the Eiffel Tower.
 	routingDiscovery := discovery.NewRoutingDiscovery(kademliaDHT)
@@ -309,10 +326,17 @@ func main() {
 		logger.Info("Successfully announced!", address)
 	}
 
+	// Testing! Check what multi addr we have:
+	if !*client {
+		logger.Info("Waiting for the minutemen...")
+		time.Sleep(60 * 1000 * time.Millisecond)
+		logger.Info("Multi addresses:", host.Addrs())
+	}
+
 	// Now, look for others who have announced
 	// This is like your friend telling you the location to meet you.
 	if *client {
-		logger.Info(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m",config.ServerPublicKey))
+		logger.Info(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m", config.ServerPublicKey))
 		peerChan, err := routingDiscovery.FindPeers(ctx, config.ServerPublicKey)
 		if err != nil {
 			panic(err)
@@ -322,7 +346,7 @@ func main() {
 			if peer.ID == host.ID() {
 				continue
 			}
-			logger.Info(fmt.Sprintf("Found peer: \x1b[34m%s\x1b[0m",peer.ID))
+			logger.Info(fmt.Sprintf("Found peer: \x1b[34m%s\x1b[0m", peer.ID))
 			stream, err := host.NewStream(ctx, peer.ID, protocol.ID(config.ProtocolID))
 
 			if err != nil {
@@ -346,7 +370,7 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
-				logger.Info(fmt.Sprintf("Sending msg: \x1b[95m%s\x1b[0m",message))
+				logger.Info(fmt.Sprintf("Sending msg: \x1b[95m%s\x1b[0m", message))
 
 				decodeAddress, err := hexutil.Decode(config.ServerPublicKey)
 				if err != nil {
@@ -363,7 +387,7 @@ func main() {
 				if err != nil {
 					logger.Fatal(err)
 				}
-				logger.Info(fmt.Sprintf("Sending encrypted msg: \x1b[95m%s\x1b[0m",base64.StdEncoding.EncodeToString(ct)))
+				logger.Info(fmt.Sprintf("Sending encrypted msg: \x1b[95m%s\x1b[0m", base64.StdEncoding.EncodeToString(ct)))
 
 				_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(ct)))
 				if err != nil {

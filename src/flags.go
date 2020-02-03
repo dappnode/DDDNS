@@ -45,10 +45,10 @@ type Config struct {
 	ListenAddresses  addrList
 	ProtocolID       string
 	ServerPublicKey  string
-	DataDir			 string
+	DataDir          string
 }
 
-func ParseFlags() (Config, error) {
+func parseFlags() (Config, error) {
 	config := Config{}
 	flag.StringVar(&config.ServerPublicKey, "pk", "", "Add a server public key")
 	flag.Var(&config.BootstrapPeers, "peer", "Adds a peer multiaddress to the bootstrap list")

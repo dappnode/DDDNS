@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"math/big"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,7 +26,8 @@ import (
 	eth "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ipfs/go-log"
-	"github.com/libp2p/go-libp2p"
+	libp2p "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
@@ -34,6 +35,7 @@ import (
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	multiaddr "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr-net"
 	logging "github.com/whyrusleeping/go-logging"
 )
 
@@ -49,6 +51,20 @@ type Message struct {
 	Random    string `json:"random"`
 	PublicKey string `json:"publickey"`
 	Data      string `json:"data"`
+}
+
+type DDDNS struct {
+	// Address to listen on
+	Addr string
+
+	// libp2p Host
+
+	host             host.Host
+	ctx              context.Context
+	dht              *dht.IpfsDHT
+	routingDiscovery *discovery.RoutingDiscovery
+	// Public IP if not nil
+	PubIP *string
 }
 
 func handleStream(stream network.Stream) {
@@ -96,7 +112,7 @@ func readData(rw *bufio.ReadWriter) {
 		if err != nil {
 			logger.Error(err)
 		}
-		logger.Info(fmt.Sprintf("decrypted message received: \x1b[34m%s\x1b[0m", decryptMessage))
+		logger.Info(fmt.Sprintf("Decrypted message received: \x1b[34m%s\x1b[0m", decryptMessage))
 
 		if !*client {
 
@@ -141,12 +157,10 @@ func readData(rw *bufio.ReadWriter) {
 				Data:      ip,
 			}
 
-			b, err := json.Marshal(m)
+			message, err := json.Marshal(m)
 			if err != nil {
 				panic(err)
 			}
-
-			message := b
 
 			ct, err := ecies.Encrypt(rand.Reader, responsePubKey, message, nil, nil)
 			if err != nil {
@@ -192,25 +206,6 @@ func writeData(rw *bufio.ReadWriter) {
 	}
 }
 
-func IsPublicIP(IP net.IP) bool {
-	if IP.IsLoopback() || IP.IsLinkLocalMulticast() || IP.IsLinkLocalUnicast() {
-		return false
-	}
-	if ip4 := IP.To4(); ip4 != nil {
-		switch {
-		case ip4[0] == 10:
-			return false
-		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
-			return false
-		case ip4[0] == 192 && ip4[1] == 168:
-			return false
-		default:
-			return true
-		}
-	}
-	return false
-}
-
 func main() {
 	log.SetAllLoggers(logging.ERROR)
 	log.SetLogLevel("dddns", "info")
@@ -218,7 +213,7 @@ func main() {
 	var err error
 	help := flag.Bool("h", false, "Display Help")
 	client = flag.Bool("client", false, "Client mode")
-	config, err = ParseFlags()
+	config, err = parseFlags()
 	if err != nil {
 		panic(err)
 	}
@@ -238,22 +233,6 @@ func main() {
 	ctx := context.Background()
 	var key *ecdsa.PrivateKey
 
-	keyfile := filepath.Join(config.DataDir, "nodekey")
-
-	//If we don't have a nodekey we must to create a new one
-	if _, err := os.Stat(keyfile); os.IsNotExist(err) {
-		// Create an account
-		key, err = eth.GenerateKey()
-		if err != nil {
-			panic(err)
-		}
-		eth.SaveECDSA(keyfile, key)
-	} else {
-		key, err = eth.LoadECDSA(keyfile)
-		if err != nil {
-			panic(err)
-		}
-	}
 	// Get the address
 	//address := eth.PubkeyToAddress(key.PublicKey).Hex()
 	cpk := eth.CompressPubkey(&key.PublicKey)
@@ -267,15 +246,6 @@ func main() {
 	// 0.0.0.0 will listen on any interface device.
 	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", 45678))
 	prvKey, _, err := crypto.GenerateKeyPairWithReader(crypto.ECDSA, 2048, strings.NewReader(privateKey))
-
-	// libp2p.New constructs a new libp2p Host.
-	host, err := libp2p.New(ctx,
-		libp2p.ListenAddrs(sourceMultiAddr),
-		libp2p.Identity(prvKey),
-	)
-	if err != nil {
-		panic(err)
-	}
 
 	logger.Info(fmt.Sprintf("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", host.ID()))
 
@@ -328,9 +298,14 @@ func main() {
 
 	// Testing! Check what multi addr we have:
 	if !*client {
-		logger.Info("Waiting for the minutemen...")
-		time.Sleep(60 * 1000 * time.Millisecond)
-		logger.Info("Multi addresses:", host.Addrs())
+		addrs := host.Addrs()
+		if (len(addrs) > 0) && manet.IsPublicAddr(addrs[len(addrs)-1]) {
+			addr, _ := manet.ToNetAddr(addrs[len(addrs)-1])
+			logger.Info("Public IP: ", addr.String())
+		} else {
+			logger.Info("Looking for public IP in third party services: ")
+			// fallback
+		}
 	}
 
 	// Now, look for others who have announced
@@ -409,4 +384,100 @@ func main() {
 
 	select {}
 
+}
+
+// NewDDNS creator
+// keys as parameter?
+func NewDDNS(log interfaces.Logger, config interfaces.Config) (dddns *DDDNS) {
+	dddns = &DDDNS{
+		Logger: log,
+		Config: config,
+	}
+	return
+}
+
+// Start initializes the DDNS with all functions
+func (dddns *DDDNS) Start() {
+
+	// ddns.initCtx()
+
+	dddns.initHost()
+
+	// ddns.bootsrap()
+
+	dddns.announce()
+	// ddns.checkPeers()
+
+}
+
+// Function to announce ourselves
+func (dddns *DDDNS) announce() bool {
+	return true
+}
+
+// TODO, add Options
+func (dddns *DDDNS) initHost(prvKey crypto.PrivKey) {
+	var err error
+	p2p.host, err = libp2p.New(dddns.ctx,
+		libp2p.ListenAddrs(sourceMultiAddr),
+		libp2p.Identity(prvKey),
+		libp2p.DefaultEnableRelay,
+		libp2p.NATPortMap(),
+	)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (dddns *DDDNS) getPublicIP() string {
+	addrs := dddns.host.Addrs()
+	if (len(addrs) > 0) && manet.IsPublicAddr(addrs[len(addrs)-1]) {
+		addr, _ := manet.ToNetAddr(addrs[len(addrs)-1])
+		ip := strings.Split(addr.String(), ":")[0]
+		return ip
+	} else {
+		// try fallback from third party service
+		return ""
+
+	}
+}
+
+func (dddns *DDDNS) initContext() {
+	dddns.ctx = context.Background()
+}
+
+func (dddns *DDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
+	// Try to get key from fs
+	keyfile := filepath.Join(dddns.config.DataDir, "nodekey")
+
+	//If we don't have a nodekey we must to create a new one
+	if _, err := os.Stat(keyfile); os.IsNotExist(err) {
+		privateKey, publicKey, err := crypto.GenerateEd25519Key(rand.Reader)
+		if err != nil {
+			panic(err)
+		}
+		privateKeyBytes, err := crypto.MarshalPrivateKey(privateKey)
+		if err != nil {
+			panic(err)
+		}
+		kex := hex.EncodeToString(privateKeyBytes)
+		ioutil.WriteFile(keyfile, []byte(kex), 0600)
+
+	} else {
+		kex, _ := ioutil.ReadFile(keyfile)
+		if err != nil {
+			panic(err)
+		}
+		privateKeyBytes, err := hex.DecodeString(kex)
+		if err != nil {
+			panic(err)
+		}
+		privateKey, err := crypto.UnmarshalEd25519PrivateKey(privateKeyBytes)
+		if err != nil {
+			panic(err)
+		}
+		publicKey := privateKey.GetPublic()
+
+	}
+	return privateKey, publicKey, nil
 }

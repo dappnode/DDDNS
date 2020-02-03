@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto/ecies"
 
 	eth "github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ipfs/go-log"
 	libp2p "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -53,18 +53,20 @@ type Message struct {
 	Data      string `json:"data"`
 }
 
+// DDDNS type
 type DDDNS struct {
 	// Address to listen on
 	Addr string
 
 	// libp2p Host
-
 	host             host.Host
 	ctx              context.Context
 	dht              *dht.IpfsDHT
 	routingDiscovery *discovery.RoutingDiscovery
 	// Public IP if not nil
-	PubIP *string
+	PubIP  *string
+	client bool
+	config Config
 }
 
 func handleStream(stream network.Stream) {
@@ -257,44 +259,9 @@ func main() {
 	// client because we want each peer to maintain its own local copy of the
 	// DHT, so that the bootstrapping node of the DHT can go down without
 	// inhibiting future peer discovery.
-	kademliaDHT, err := dht.New(ctx, host)
-	if err != nil {
-		panic(err)
-	}
-
-	// Bootstrap the DHT. In the default configuration, this spawns a Background
-	// thread that will refresh the peer table every five minutes.
-	logger.Debug("Bootstrapping the DHT")
-	if err = kademliaDHT.Bootstrap(ctx); err != nil {
-		panic(err)
-	}
-
-	// Let's connect to the bootstrap nodes first. They will tell us about the
-	// other nodes in the network.
-	logger.Info("Connecting to bootstrap nodes...")
-	var wg sync.WaitGroup
-	for _, peerAddr := range config.BootstrapPeers {
-		peerinfo, _ := peer.AddrInfoFromP2pAddr(peerAddr)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := host.Connect(ctx, *peerinfo); err != nil {
-				logger.Warning(err)
-			} else {
-				logger.Info("Connection established with bootstrap node:", *peerinfo)
-			}
-		}()
-	}
-	wg.Wait()
 
 	// We use a rendezvous point "meet me here" to announce our location.
 	// This is like telling your friends to meet you at the Eiffel Tower.
-	routingDiscovery := discovery.NewRoutingDiscovery(kademliaDHT)
-	if !*client {
-		logger.Info("Announcing ourselves...")
-		discovery.Advertise(ctx, routingDiscovery, address)
-		logger.Info("Successfully announced!", address)
-	}
 
 	// Testing! Check what multi addr we have:
 	if !*client {
@@ -387,7 +354,6 @@ func main() {
 }
 
 // NewDDNS creator
-// keys as parameter?
 func NewDDNS(log interfaces.Logger, config interfaces.Config) (dddns *DDDNS) {
 	dddns = &DDDNS{
 		Logger: log,
@@ -398,27 +364,31 @@ func NewDDNS(log interfaces.Logger, config interfaces.Config) (dddns *DDDNS) {
 
 // Start initializes the DDNS with all functions
 func (dddns *DDDNS) Start() {
-
-	// ddns.initCtx()
-
-	dddns.initHost()
-
-	// ddns.bootsrap()
-
-	dddns.announce()
-	// ddns.checkPeers()
-
+	dddns.initCtx()
+	prvKey, _, err := dddns.getKeys()
+	dddns.initHost(prvKey)
+	dddns.bootstrap()
+	if !dddns.client {
+		dddns.announce(dddns.host.ID().String())
+	}
 }
 
 // Function to announce ourselves
-func (dddns *DDDNS) announce() bool {
-	return true
+func (dddns *DDDNS) announce(rendezvous string) {
+	if dddns.dht != nil {
+		routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
+		logger.Info("Announcing ourselves...")
+		discovery.Advertise(dddns.ctx, routingDiscovery, rendezvous)
+		logger.Info("Successfully announced!", rendezvous)
+	}
 }
 
 // TODO, add Options
 func (dddns *DDDNS) initHost(prvKey crypto.PrivKey) {
+	// Use config port here
+	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", 45678))
 	var err error
-	p2p.host, err = libp2p.New(dddns.ctx,
+	dddns.host, err = libp2p.New(dddns.ctx,
 		libp2p.ListenAddrs(sourceMultiAddr),
 		libp2p.Identity(prvKey),
 		libp2p.DefaultEnableRelay,
@@ -442,11 +412,11 @@ func (dddns *DDDNS) getPublicIP() string {
 	}
 }
 
-func (dddns *DDDNS) initContext() {
+func (dddns *DDDNS) initCtx() {
 	dddns.ctx = context.Background()
 }
 
-func (dddns *DDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
+func (dddns *DDDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
 	// Try to get key from fs
 	keyfile := filepath.Join(dddns.config.DataDir, "nodekey")
 
@@ -468,7 +438,7 @@ func (dddns *DDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
 		if err != nil {
 			panic(err)
 		}
-		privateKeyBytes, err := hex.DecodeString(kex)
+		privateKeyBytes, err := hex.DecodeString(string(kex))
 		if err != nil {
 			panic(err)
 		}
@@ -480,4 +450,42 @@ func (dddns *DDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
 
 	}
 	return privateKey, publicKey, nil
+}
+
+func (dddns *DDDNS) bootstrap() {
+	var err error
+	dddns.dht, err = dht.New(ctx, host)
+	if err != nil {
+		panic(err)
+	}
+
+	// Bootstrap the DHT. In the default configuration, this spawns a Background
+	// thread that will refresh the peer table every five minutes.
+	logger.Debug("Bootstrapping the DHT")
+	if err = dddns.dht.Bootstrap(ctx); err != nil {
+		logger.Error(err)
+	}
+
+	logger.Debug("Connecting to bootstrap nodes...")
+	var wg sync.WaitGroup
+	for _, peerAddr := range config.BootstrapPeers {
+		peerinfo, _ := peer.AddrInfoFromP2pAddr(peerAddr)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := dddns.host.Connect(dddns.ctx, *peerinfo); err != nil {
+				logger.Warning(err)
+			} else {
+				logger.Info("Connection established with bootstrap node:", *peerinfo)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// Resolve as client the IP of a peer
+func (dddns *DDDNS) Resolve(id string) string {
+
+	return "IP"
+
 }

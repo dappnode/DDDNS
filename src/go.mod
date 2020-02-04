@@ -11,6 +11,7 @@ require (
 	github.com/multiformats/go-multiaddr v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.1
 	github.com/whyrusleeping/go-logging v0.0.1
+	go.uber.org/zap v1.13.0
 )
 
 go 1.13

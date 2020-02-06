@@ -232,7 +232,7 @@ func (dddns *DDDNS) announce(rendezvous string) {
 		routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
 		log.Info("Announcing ourselves...")
 		discovery.Advertise(dddns.ctx, routingDiscovery, rendezvous)
-		log.Info("Successfully announced!", rendezvous)
+		log.Infof("Successfully announced! at: %s", rendezvous)
 	}
 }
 
@@ -248,7 +248,7 @@ func (dddns *DDDNS) initHost(prvKey crypto.PrivKey) {
 		libp2p.NATPortMap(),
 		libp2p.DefaultSecurity,
 	)
-	log.Info(fmt.Sprintf("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", dddns.host.ID()))
+	log.Infof("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", dddns.host.ID())
 	if err != nil {
 		panic(err)
 	}

@@ -31,6 +31,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
+	// Deprecated!
 	crypto "github.com/libp2p/go-libp2p-crypto"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -45,8 +47,6 @@ var config Config
 type Message struct {
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
-	Random    string `json:"random"`
-	PublicKey string `json:"publickey"`
 	Data      string `json:"data"`
 }
 
@@ -181,6 +181,67 @@ func readData(rw *bufio.ReadWriter) {
 	}
 }
 
+func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
+	for {
+		message, err := rw.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading from buffer: ", err)
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(message)
+		if err != nil {
+			fmt.Println("Error decoding: ", err)
+		}
+
+		if message == "" {
+			return
+		}
+		if message != "\n" {
+			// Green console colour:        \x1b[32m
+			// Reset console colour:        \x1b[0m
+			log.Info(fmt.Sprintf("Receiving msg: \x1b[34m%s\x1b[0m", message))
+
+		}
+		log.Info(fmt.Sprintf("Message received: \x1b[34m%s\x1b[0m", decoded))
+
+		// New Message if server
+		if !dddns.client {
+			res := &Message{}
+			err = json.Unmarshal(decoded, res)
+			if err != nil {
+				log.Error(err)
+			}
+
+			ip := dddns.getPublicIP()
+			if err != nil {
+				log.Error("cmd.Run() failed with %s\n", err)
+			}
+
+			m := Message{
+				Type:      "IP",
+				Timestamp: res.Timestamp,
+				Data:      ip,
+			}
+
+			message, err := json.Marshal(m)
+			if err != nil {
+				panic(err)
+			}
+
+			_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(message)))
+			if err != nil {
+				fmt.Println("Error writing to buffer")
+				panic(err)
+			}
+			err = rw.Flush()
+			if err != nil {
+				fmt.Println("Error flushing buffer")
+				panic(err)
+			}
+		}
+	}
+}
+
 // func writeData(rw *bufio.ReadWriter) {
 // 	stdReader := bufio.NewReader(os.Stdin)
 
@@ -268,6 +329,8 @@ func (dddns *DDDNS) Start() {
 	if !dddns.client {
 		dddns.announce(dddns.host.ID().String())
 		dddns.setHandler()
+	} else {
+		dddns.resolve('someaddr')
 	}
 }
 
@@ -387,7 +450,7 @@ func (dddns *DDDNS) bootstrap() {
 }
 
 // Resolve as client the IP of a peer
-func (dddns *DDDNS) Resolve(id string, key *ecdsa.PublicKey) string {
+func (dddns *DDDNS) resolve(id string) {
 	routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
 	log.Info(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m", config.ServerPublicKey))
 	peerChan, err := routingDiscovery.FindPeers(dddns.ctx, id)
@@ -408,15 +471,9 @@ func (dddns *DDDNS) Resolve(id string, key *ecdsa.PublicKey) string {
 		} else {
 			rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
-			randomNonce, err := rand.Int(rand.Reader, big.NewInt(1000000))
-			if err != nil {
-				panic(err)
-			}
 			m := Message{
 				Type:      "GET",
 				Timestamp: strconv.FormatInt(time.Now().Unix(), 10),
-				Random:    randomNonce.String(),
-				PublicKey: hexutil.Encode(eth.CompressPubkey(key)),
 				Data:      "",
 			}
 			message, err := json.Marshal(m)
@@ -425,24 +482,7 @@ func (dddns *DDDNS) Resolve(id string, key *ecdsa.PublicKey) string {
 			}
 			log.Info(fmt.Sprintf("Sending msg: \x1b[95m%s\x1b[0m", message))
 
-			decodeAddress, err := hexutil.Decode(config.ServerPublicKey)
-			if err != nil {
-				panic(err)
-			}
-			desPuBKey, err := eth.DecompressPubkey(decodeAddress)
-			if err != nil {
-				log.Error(err)
-				panic(err)
-			}
-			serverPK := ecies.ImportECDSAPublic(desPuBKey)
-
-			ct, err := ecies.Encrypt(rand.Reader, serverPK, message, nil, nil)
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Info(fmt.Sprintf("Sending encrypted msg: \x1b[95m%s\x1b[0m", base64.StdEncoding.EncodeToString(ct)))
-
-			_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(ct)))
+			_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(message)))
 			if err != nil {
 				fmt.Println("Error writing to buffer")
 				panic(err)
@@ -452,10 +492,7 @@ func (dddns *DDDNS) Resolve(id string, key *ecdsa.PublicKey) string {
 				fmt.Println("Error flushing buffer")
 				panic(err)
 			}
-			go readData(rw)
-
+			go dddns.reader(rw)
 		}
 	}
-	return "IP"
-
 }

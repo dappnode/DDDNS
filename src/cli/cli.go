@@ -29,15 +29,52 @@ func startNode(ctx *cli.Context) error {
 	return nil
 }
 
+func noArgs(ctx *cli.Context) error {
+	cli.ShowAppHelp(ctx)
+	return cli.NewExitError("no commands provided", 2)
+}
+
 func main() {
 	log.InitLogger("info", "stdout")
 
 	app := cli.NewApp()
 	app.Name = "dddns"
 	app.Version = dddns.VERSION
-	app.Action = startNode
+	app.Action = noArgs
 	// Commands here
-	app.Commands = []cli.Command{}
+	app.Commands = []cli.Command{
+		{
+			Name:     "daemon",
+			Category: "daemon",
+			Usage:    "Starts DDDNS in daemon mode",
+			Action: func(ctx *cli.Context) error {
+				dddnsNode := dddns.NewDDDNS(ctx)
+				dddnsNode.Start()
+				dddnsNode.StartDaemon()
+
+				return nil
+
+			},
+		},
+		{
+			Name:     "client",
+			Category: "client",
+			Usage:    "Starts DDDNS in client mode",
+			Action: func(ctx *cli.Context) error {
+				if len(ctx.GlobalString(flags.PublicKey.Name)) == 0 {
+					log.Error("No target provided")
+					return nil
+				}
+				dddnsNode := dddns.NewDDDNS(ctx)
+				dddnsNode.Start()
+				dddnsNode.Resolve(ctx.GlobalString(flags.PublicKey.Name))
+				return nil
+			},
+			Flags: []cli.Flag{
+				flags.PublicKey,
+			},
+		},
+	}
 
 	app.Flags = appFlags
 

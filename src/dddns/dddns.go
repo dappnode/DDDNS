@@ -18,19 +18,18 @@ import (
 
 	"github.com/dappnode/dddns/flags"
 	"github.com/dappnode/dddns/log"
+
 	libp2p "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	"github.com/urfave/cli"
-
-	// Deprecated!
-	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	multiaddr "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr-net"
+	"github.com/urfave/cli"
 )
 
 const (
@@ -77,7 +76,7 @@ func (dddns *DDDNS) handleStream(stream network.Stream) {
 	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
 	go dddns.reader(rw)
-	//go writeData(rw)
+	// go inputLoop(rw)
 
 }
 
@@ -142,74 +141,31 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 	}
 }
 
-// func writeData(rw *bufio.ReadWriter) {
-// 	stdReader := bufio.NewReader(os.Stdin)
+func inputLoop(rw *bufio.ReadWriter) {
+	stdReader := bufio.NewReader(os.Stdin)
 
-// 	for {
-// 		fmt.Print("> ")
-// 		sendData, err := stdReader.ReadString('\n')
-// 		if err != nil {
-// 			fmt.Println("Error reading from stdin")
-// 			panic(err)
-// 		}
+	for {
+		fmt.Print("> ")
+		sendData, err := stdReader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading from stdin")
+			panic(err)
+		}
 
-// 		_, err = rw.WriteString(fmt.Sprintf("%s\n", sendData))
-// 		if err != nil {
-// 			fmt.Println("Error writing to buffer")
-// 			panic(err)
-// 		}
-// 		err = rw.Flush()
-// 		if err != nil {
-// 			fmt.Println("Error flushing buffer")
-// 			panic(err)
-// 		}
-// 	}
-// }
+		_, err = rw.WriteString(fmt.Sprintf("%s\n", sendData))
+		if err != nil {
+			fmt.Println("Error writing to buffer")
+			panic(err)
+		}
+		err = rw.Flush()
+		if err != nil {
+			fmt.Println("Error flushing buffer")
+			panic(err)
+		}
+	}
+}
 
-// func main() {
-// 	// log.SetAllLoggers(logging.ERROR)
-// 	// log.SetLogLevel("dddns", "info")
-
-// 	var err error
-// 	help := flag.Bool("h", false, "Display Help")
-// 	client = flag.Bool("client", false, "Client mode")
-// 	config, err = parseFlags()
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	if *help {
-// 		fmt.Println("DDDNS (Decentralized Dynamic Domain Name Service")
-// 		fmt.Println()
-// 		fmt.Println("Usage: Run './dddns ...")
-// 		flag.PrintDefaults()
-// 		return
-// 	}
-
-// 	if *client {
-// 		log.Info(fmt.Sprintf("\x1b[32m%s\x1b[0m", "Running client mode!"))
-// 	}
-
-// 	// // Get the address
-// 	// //address := eth.PubkeyToAddress(key.PublicKey).Hex()
-// 	// cpk := eth.CompressPubkey(&key.PublicKey)
-// 	// address := hexutil.Encode(cpk)
-
-// 	// log.Info(fmt.Sprintf("Public Address: \x1b[32m%s\x1b[0m", address))
-
-// 	// // Get the private key
-// 	// privateKey := hex.EncodeToString(key.D.Bytes())
-
-// 	// // 0.0.0.0 will listen on any interface device.
-// 	// sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", 45678))
-// 	// prvKey, _, err := crypto.GenerateKeyPairWithReader(crypto.ECDSA, 2048, strings.NewReader(privateKey))
-
-// 	// Set a function as stream handler. This function is called when a peer
-// 	// initiates a connection and starts a stream with this peer.
-
-// }
-
-// Start initializes the DDNS with all functions
+// Start initializes the DDNS with all required functions
 func (dddns *DDDNS) Start() {
 	dddns.initCtx()
 	prvKey, _, err := dddns.getKeys()
@@ -218,12 +174,6 @@ func (dddns *DDDNS) Start() {
 	}
 	dddns.initHost(prvKey)
 	dddns.bootstrap()
-	if !dddns.client {
-		dddns.announce(dddns.host.ID().String())
-		dddns.setHandler()
-	} else {
-		dddns.resolve("someaddr")
-	}
 }
 
 // Function to announce ourselves
@@ -355,7 +305,7 @@ func (dddns *DDDNS) bootstrap() {
 }
 
 // Resolve as client the IP of a peer
-func (dddns *DDDNS) resolve(id string) {
+func (dddns *DDDNS) Resolve(id string) {
 	target := dddns.clictx.GlobalString(flags.PublicKey.Name)
 	routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
 	log.Info(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m", target))
@@ -403,4 +353,13 @@ func (dddns *DDDNS) resolve(id string) {
 			go dddns.reader(rw)
 		}
 	}
+}
+
+// StartDaemon endless loop
+func (dddns *DDDNS) StartDaemon() {
+	dddns.announce(dddns.host.ID().String())
+	dddns.setHandler()
+
+	// This keeps the daemon running
+	select {}
 }

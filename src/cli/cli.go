@@ -35,7 +35,6 @@ func noArgs(ctx *cli.Context) error {
 }
 
 func main() {
-	log.InitLogger("info", "stdout")
 
 	app := cli.NewApp()
 	app.Name = "dddns"
@@ -48,6 +47,7 @@ func main() {
 			Category: "daemon",
 			Usage:    "Starts DDDNS in daemon mode",
 			Action: func(ctx *cli.Context) error {
+				log.InitLogger("info", "stdout")
 				dddnsNode := dddns.NewDDDNS(ctx)
 				dddnsNode.Start()
 				dddnsNode.StartDaemon()
@@ -61,6 +61,7 @@ func main() {
 			Category: "client",
 			Usage:    "Starts DDDNS in client mode",
 			Action: func(ctx *cli.Context) error {
+				log.InitLogger("info", os.DevNull)
 				if len(ctx.GlobalString(flags.PublicKey.Name)) == 0 {
 					log.Error("No target provided")
 					return nil

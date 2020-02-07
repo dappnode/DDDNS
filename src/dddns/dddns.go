@@ -19,6 +19,7 @@ import (
 	"github.com/dappnode/dddns/flags"
 	"github.com/dappnode/dddns/log"
 
+	externalip "github.com/glendc/go-external-ip"
 	libp2p "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -35,6 +36,8 @@ import (
 const (
 	// VERSION of the app
 	VERSION = "0.1"
+	// RendezvousRefresh in minutes
+	RendezvousRefresh = 4
 )
 
 // Message ...
@@ -159,7 +162,7 @@ func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter) {
 			log.Info(fmt.Sprintf("Receiving msg: \x1b[34m%s\x1b[0m", message))
 
 		}
-		log.Info(fmt.Sprintf("Message received: \x1b[34m%s\x1b[0m", decoded))
+		log.Info(fmt.Sprintf("Message received: \x1b[32m%s\x1b[0m", decoded))
 		continue
 	}
 }
@@ -200,12 +203,15 @@ func (dddns *DDDNS) Start() {
 }
 
 // Function to announce ourselves
-func (dddns *DDDNS) announce(rendezvous string) {
-	if dddns.dht != nil {
-		routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
-		log.Info("Announcing ourselves...")
-		discovery.Advertise(dddns.ctx, routingDiscovery, rendezvous)
-		log.Infof("Successfully announced! at: %s", rendezvous)
+func (dddns *DDDNS) announceLoop(rendezvous string) {
+	for {
+		if dddns.dht != nil {
+			routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
+			log.Info("Announcing ourselves...")
+			discovery.Advertise(dddns.ctx, routingDiscovery, rendezvous)
+			log.Infof("Successfully announced! at: %s", rendezvous)
+		}
+		time.Sleep(RendezvousRefresh * time.Minute)
 	}
 }
 
@@ -221,10 +227,11 @@ func (dddns *DDDNS) initHost(prvKey crypto.PrivKey) {
 		libp2p.NATPortMap(),
 		libp2p.DefaultSecurity,
 	)
-	log.Infof("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", dddns.host.ID())
 	if err != nil {
 		panic(err)
 	}
+	log.Infof("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", dddns.host.ID())
+
 }
 
 // Review method to get IP, it can change in order:
@@ -237,8 +244,13 @@ func (dddns *DDDNS) getPublicIP() string {
 		addr, _ := manet.ToNetAddr(addrs[len(addrs)-1])
 		ip = strings.Split(addr.String(), ":")[0]
 	} else {
-		// try fallback from third party service
-		return ""
+		// If we fail to get the IP from the libp2p, try fallback from third party, centralized service
+		consensus := externalip.DefaultConsensus(nil, nil)
+		netIP, err := consensus.ExternalIP()
+		if err != nil {
+			panic(err)
+		}
+		ip = netIP.String()
 	}
 	return ip
 }
@@ -383,7 +395,7 @@ func (dddns *DDDNS) Resolve(id string) {
 
 // StartDaemon endless loop
 func (dddns *DDDNS) StartDaemon() {
-	dddns.announce(dddns.host.ID().String())
+	go dddns.announceLoop(dddns.host.ID().String())
 	dddns.setHandler()
 
 	// This keeps the daemon running

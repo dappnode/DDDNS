@@ -1,6 +1,7 @@
 module github.com/dappnode/dddns
 
 require (
+	github.com/glendc/go-external-ip v0.0.0-20170425150139-139229dcdddd
 	github.com/golang/protobuf v1.3.2-0.20190517061210-b285ee9cfc6c // indirect
 	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2-0.20160603034137-1fa385a6f458 // indirect

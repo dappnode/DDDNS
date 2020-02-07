@@ -103,41 +103,64 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 		}
 		log.Info(fmt.Sprintf("Message received: \x1b[34m%s\x1b[0m", decoded))
 
-		// New Message if server
-		if !dddns.client {
-			res := &Message{}
-			err = json.Unmarshal(decoded, res)
-			if err != nil {
-				log.Error(err)
-			}
-
-			ip := dddns.getPublicIP()
-			if err != nil {
-				log.Error("cmd.Run() failed with %s\n", err)
-			}
-
-			m := Message{
-				Type:      "IP",
-				Timestamp: res.Timestamp,
-				Data:      ip,
-			}
-
-			message, err := json.Marshal(m)
-			if err != nil {
-				panic(err)
-			}
-
-			_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(message)))
-			if err != nil {
-				fmt.Println("Error writing to buffer")
-				panic(err)
-			}
-			err = rw.Flush()
-			if err != nil {
-				fmt.Println("Error flushing buffer")
-				panic(err)
-			}
+		res := &Message{}
+		err = json.Unmarshal(decoded, res)
+		if err != nil {
+			log.Error(err)
 		}
+
+		ip := dddns.getPublicIP()
+		if err != nil {
+			log.Error("cmd.Run() failed with %s\n", err)
+		}
+
+		m := Message{
+			Type:      "IP",
+			Timestamp: res.Timestamp,
+			Data:      ip,
+		}
+
+		msg, err := json.Marshal(m)
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(msg)))
+		if err != nil {
+			fmt.Println("Error writing to buffer")
+			panic(err)
+		}
+		err = rw.Flush()
+		if err != nil {
+			fmt.Println("Error flushing buffer")
+			panic(err)
+		}
+	}
+}
+
+func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter) {
+	for {
+		message, err := rw.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading from buffer: ", err)
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(message)
+		if err != nil {
+			fmt.Println("Error decoding: ", err)
+		}
+
+		if message == "" {
+			return
+		}
+		if message != "\n" {
+			// Green console colour:        \x1b[32m
+			// Reset console colour:        \x1b[0m
+			log.Info(fmt.Sprintf("Receiving msg: \x1b[34m%s\x1b[0m", message))
+
+		}
+		log.Info(fmt.Sprintf("Message received: \x1b[34m%s\x1b[0m", decoded))
+		continue
 	}
 }
 
@@ -204,8 +227,11 @@ func (dddns *DDDNS) initHost(prvKey crypto.PrivKey) {
 	}
 }
 
+// Review method to get IP, it can change in order:
+// getting IP from Addrs: [/ip4/127.0.0.1/tcp/44453 /ip4/173.249.54.25/tcp/44453 /ip4/172.17.0.1/tcp/44453 /ip4/172.33.0.1/tcp/44453 /ip4/172.18.0.1/tcp/44453]
 func (dddns *DDDNS) getPublicIP() string {
 	addrs := dddns.host.Addrs()
+	log.Infof("getting IP from Addrs: %v", addrs)
 	var ip string
 	if (len(addrs) > 0) && manet.IsPublicAddr(addrs[len(addrs)-1]) {
 		addr, _ := manet.ToNetAddr(addrs[len(addrs)-1])
@@ -350,7 +376,7 @@ func (dddns *DDDNS) Resolve(id string) {
 				fmt.Println("Error flushing buffer")
 				panic(err)
 			}
-			go dddns.reader(rw)
+			go dddns.clientReader(rw)
 		}
 	}
 }

@@ -41,10 +41,12 @@ const (
 )
 
 // Message ...
+// Should include a signature to validate it's the right answer
 type Message struct {
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
 	Data      string `json:"data"`
+	Signature string `json:"signature"`
 }
 
 // DDDNS type
@@ -291,6 +293,8 @@ func (dddns *DDDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
 			panic(err)
 		}
 		kex := hex.EncodeToString(privateKeyBytes)
+
+		// Dir must exist
 		ioutil.WriteFile(keyfile, []byte(kex), 0600)
 	} else {
 		kex, _ := ioutil.ReadFile(keyfile)

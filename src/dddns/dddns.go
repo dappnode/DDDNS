@@ -295,6 +295,10 @@ func (dddns *DDDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
 		kex := hex.EncodeToString(privateKeyBytes)
 
 		// Dir must exist
+		err = os.MkdirAll(dddns.clictx.GlobalString(flags.DataDir.Name), os.ModePerm)
+		if err != nil {
+			panic(err)
+		}
 		ioutil.WriteFile(keyfile, []byte(kex), 0600)
 	} else {
 		kex, _ := ioutil.ReadFile(keyfile)
@@ -305,7 +309,7 @@ func (dddns *DDDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
 		if err != nil {
 			panic(err)
 		}
-		privateKey, err := crypto.UnmarshalEd25519PrivateKey(privateKeyBytes)
+		privateKey, err = crypto.UnmarshalPrivateKey(privateKeyBytes)
 		if err != nil {
 			panic(err)
 		}

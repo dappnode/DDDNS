@@ -15,7 +15,6 @@ var appFlags = []cli.Flag{
 	flags.DataDir,
 	flags.Port,
 	flags.ProtocolID,
-	flags.PublicKey,
 }
 
 func startNode(ctx *cli.Context) error {
@@ -40,7 +39,6 @@ func main() {
 	app.Name = "dddns"
 	app.Version = dddns.VERSION
 	app.Action = noArgs
-	// Commands here
 	app.Commands = []cli.Command{
 		{
 			Name:     "daemon",
@@ -61,14 +59,18 @@ func main() {
 			Category: "client",
 			Usage:    "Starts DDDNS in client mode",
 			Action: func(ctx *cli.Context) error {
-				log.InitLogger("info", os.DevNull)
-				if len(ctx.GlobalString(flags.PublicKey.Name)) == 0 {
-					log.Error("No target provided")
-					return nil
+				log.InitLogger("info", "stdout")
+				//log.InitLogger("info", os.DevNull)
+				pkey := ctx.String("pubkey")
+				log.Infof("Name: %s", pkey)
+				if len(pkey) < 52 {
+					log.Error("No valid target provided")
+					os.Exit(1)
 				}
 				dddnsNode := dddns.NewDDDNS(ctx)
 				dddnsNode.Start()
-				dddnsNode.Resolve(ctx.GlobalString(flags.PublicKey.Name))
+				dddnsNode.Resolve(pkey)
+				dddnsNode.Close()
 				return nil
 			},
 			Flags: []cli.Flag{
@@ -80,7 +82,7 @@ func main() {
 	app.Flags = appFlags
 
 	if err := app.Run(os.Args); err != nil {
-		log.Error(err.Error())
+		//log.Error("Error.")
 		os.Exit(1)
 	}
 

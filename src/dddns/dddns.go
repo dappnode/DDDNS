@@ -60,6 +60,8 @@ type DDDNS struct {
 	ctx              context.Context
 	dht              *dht.IpfsDHT
 	routingDiscovery *discovery.RoutingDiscovery
+	privkey          crypto.PrivKey
+	Pubkey           crypto.PubKey
 	// Public IP if not nil
 	PubIP  *string
 	client bool
@@ -88,6 +90,9 @@ func (dddns *DDDNS) handleStream(stream network.Stream) {
 func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 	for {
 		message, err := rw.ReadString('\n')
+		if message == "" {
+			return
+		}
 		if err != nil {
 			fmt.Println("Error reading from buffer: ", err)
 		}
@@ -95,10 +100,6 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 		decoded, err := base64.StdEncoding.DecodeString(message)
 		if err != nil {
 			fmt.Println("Error decoding: ", err)
-		}
-
-		if message == "" {
-			return
 		}
 		if message != "\n" {
 			// Green console colour:        \x1b[32m
@@ -123,6 +124,7 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 			Type:      "IP",
 			Timestamp: res.Timestamp,
 			Data:      ip,
+			//Signature: nil,
 		}
 
 		msg, err := json.Marshal(m)
@@ -197,11 +199,11 @@ func inputLoop(rw *bufio.ReadWriter) {
 // Start initializes the DDNS with all required functions
 func (dddns *DDDNS) Start() {
 	dddns.initCtx()
-	prvKey, _, err := dddns.getKeys()
+	err := dddns.genKeys()
 	if err != nil {
 		panic(err)
 	}
-	dddns.initHost(prvKey)
+	dddns.initHost()
 	dddns.bootstrap()
 }
 
@@ -219,13 +221,13 @@ func (dddns *DDDNS) announceLoop(rendezvous string) {
 }
 
 // TODO, add Options
-func (dddns *DDDNS) initHost(prvKey crypto.PrivKey) {
+func (dddns *DDDNS) initHost() {
 	// Use config port here
 	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", 44453))
 	var err error
 	dddns.host, err = libp2p.New(dddns.ctx,
 		libp2p.ListenAddrs(sourceMultiAddr),
-		libp2p.Identity(prvKey),
+		libp2p.Identity(dddns.privkey),
 		libp2p.DefaultEnableRelay,
 		libp2p.NATPortMap(),
 		libp2p.DefaultSecurity,
@@ -277,18 +279,23 @@ func (dddns *DDDNS) setHandler() {
 	dddns.host.SetStreamHandler(protocol.ID(pid), dddns.handleStream)
 }
 
-func (dddns *DDDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
+func (dddns *DDDNS) Close() {
+	err := dddns.host.Close()
+	if err != nil {
+		log.Error("Error closing p2p host.")
+	}
+}
+
+func (dddns *DDDNS) genKeys() error {
 	// Try to get key from fs
 	keyfile := filepath.Join(dddns.clictx.GlobalString(flags.DataDir.Name), "nodekey")
-	var privateKey crypto.PrivKey
-	var publicKey crypto.PubKey
 	//If we don't have a nodekey we must to create a new one
 	if _, err := os.Stat(keyfile); os.IsNotExist(err) {
-		privateKey, publicKey, err = crypto.GenerateEd25519Key(rand.Reader)
+		dddns.privkey, dddns.Pubkey, err = crypto.GenerateEd25519Key(rand.Reader)
 		if err != nil {
 			panic(err)
 		}
-		privateKeyBytes, err := crypto.MarshalPrivateKey(privateKey)
+		privateKeyBytes, err := crypto.MarshalPrivateKey(dddns.privkey)
 		if err != nil {
 			panic(err)
 		}
@@ -309,13 +316,13 @@ func (dddns *DDDNS) getKeys() (crypto.PrivKey, crypto.PubKey, error) {
 		if err != nil {
 			panic(err)
 		}
-		privateKey, err = crypto.UnmarshalPrivateKey(privateKeyBytes)
+		dddns.privkey, err = crypto.UnmarshalPrivateKey(privateKeyBytes)
 		if err != nil {
 			panic(err)
 		}
-		publicKey = privateKey.GetPublic()
+		dddns.Pubkey = dddns.privkey.GetPublic()
 	}
-	return privateKey, publicKey, nil
+	return nil
 }
 
 func (dddns *DDDNS) bootstrap() {
@@ -401,6 +408,7 @@ func (dddns *DDDNS) Resolve(id string) {
 				fmt.Println("Error writing to buffer")
 				panic(err)
 			}
+
 			err = rw.Flush()
 			if err != nil {
 				fmt.Println("Error flushing buffer")
@@ -408,6 +416,7 @@ func (dddns *DDDNS) Resolve(id string) {
 			}
 			ip := dddns.clientReader(rw)
 			fmt.Println(ip)
+			dddns.host.RemoveStreamHandler(protocol.ID(pid))
 			return
 		}
 	}

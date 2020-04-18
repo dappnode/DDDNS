@@ -25,7 +25,7 @@ func (s *NameServer) Start(config *config.NodeState, log *log.Logger, options in
 	s.zoneConfig = make(map[string][]dns.RR)
 	if s.dnsClient == nil {
 		s.dnsClient = new(dns.Client)
-		s.dnsClient.Timeout = 60000000000 // 60 seconds timeout
+		s.dnsClient.Timeout = 10000000000 // 10 seconds timeout
 	}
 	return nil
 }

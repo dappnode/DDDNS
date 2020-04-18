@@ -19,12 +19,6 @@ var (
 		Usage: "Port used to listening and respond requests.",
 		Value: 44453,
 	}
-	// PublicKey defines the key of the node we want to resolve
-	PublicKey = cli.StringFlag{
-		Name:  "pubkey",
-		Usage: "The address (public key) of the node to resolve.",
-		Value: "",
-	}
 	// ProtocolID is a string to define the protocol identifier
 	ProtocolID = cli.StringFlag{
 		Name:  "protid",
@@ -36,6 +30,32 @@ var (
 		Name:  "datadir",
 		Usage: "Path to store the data.",
 		Value: getHomePath() + "/.dddns",
+	}
+)
+
+// Client flags
+var (
+	// PublicKey defines the key of the node we want to resolve
+	PublicKey = cli.StringFlag{
+		Name:     "pubkey",
+		Usage:    "The address (public key) of the node to resolve.",
+		Value:    "",
+		Required: true,
+	}
+)
+
+// Daemon flags
+var (
+	// DNSPort ...
+	DNSEnable = cli.BoolFlag{
+		Name:  "dnsenable",
+		Usage: "Enable DNS server.",
+	}
+	// DNSPort ...
+	DNSPort = cli.StringFlag{
+		Name:  "dnsport",
+		Usage: "The port to listen for DNS requests.",
+		Value: "53",
 	}
 )
 

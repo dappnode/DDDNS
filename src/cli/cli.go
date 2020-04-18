@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"github.com/dappnode/dddns/nameserver"
 	"os"
 
 	"github.com/dappnode/dddns/dddns"
@@ -48,10 +50,19 @@ func main() {
 				log.InitLogger("info", "stdout")
 				dddnsNode := dddns.NewDDDNS(ctx)
 				dddnsNode.Start()
+				if ctx.Bool("dnsenable") {
+					nameserver := nameserver.NewNameServer(ctx.Int("dnsport"), ctx.String("dnshost"), dddnsNode)
+					nameserver.Start()
+					log.Info("DNS enabled")
+				}
 				dddnsNode.StartDaemon()
-
 				return nil
 
+			},
+			Flags: []cli.Flag{
+				flags.DNSEnable,
+				flags.DNSPort,
+				flags.DNSHost,
 			},
 		},
 		{
@@ -69,7 +80,8 @@ func main() {
 				}
 				dddnsNode := dddns.NewDDDNS(ctx)
 				dddnsNode.Start()
-				dddnsNode.Resolve(pkey)
+				ip := dddnsNode.Resolve(pkey)
+				fmt.Println(ip)
 				dddnsNode.Close()
 				return nil
 			},

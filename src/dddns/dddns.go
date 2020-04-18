@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +64,7 @@ type DDDNS struct {
 	routingDiscovery *discovery.RoutingDiscovery
 	privkey          crypto.PrivKey
 	Pubkey           crypto.PubKey
+	ID               string
 	// Public IP if not nil
 	PubIP  *string
 	client bool
@@ -79,12 +82,10 @@ func NewDDDNS(clictx *cli.Context) (dddns *DDDNS) {
 }
 
 func (dddns *DDDNS) handleStream(stream network.Stream) {
-	log.Info("Got a new stream!")
+	log.Debug("Got a new stream!")
 	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
 	go dddns.reader(rw)
-	// go inputLoop(rw)
-
 }
 
 func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
@@ -300,7 +301,7 @@ func (dddns *DDDNS) genKeys() error {
 			panic(err)
 		}
 		kex := hex.EncodeToString(privateKeyBytes)
-
+		dddns.ID = getBase32FromPubKey(dddns.Pubkey)
 		// Dir must exist
 		err = os.MkdirAll(dddns.clictx.GlobalString(flags.DataDir.Name), os.ModePerm)
 		if err != nil {
@@ -321,6 +322,7 @@ func (dddns *DDDNS) genKeys() error {
 			panic(err)
 		}
 		dddns.Pubkey = dddns.privkey.GetPublic()
+		dddns.ID = getBase32FromPubKey(dddns.Pubkey)
 	}
 	return nil
 }
@@ -368,10 +370,10 @@ func (dddns *DDDNS) bootstrap() {
 }
 
 // Resolve as client the IP of a peer
-func (dddns *DDDNS) Resolve(id string) {
-	target := dddns.clictx.GlobalString(flags.PublicKey.Name)
+func (dddns *DDDNS) Resolve(id string) string {
+	var ip string
 	routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
-	log.Info(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m", target))
+	log.Info(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m", id))
 	peerChan, err := routingDiscovery.FindPeers(dddns.ctx, id)
 	if err != nil {
 		panic(err)
@@ -414,19 +416,29 @@ func (dddns *DDDNS) Resolve(id string) {
 				fmt.Println("Error flushing buffer")
 				panic(err)
 			}
-			ip := dddns.clientReader(rw)
-			fmt.Println(ip)
+			ip = dddns.clientReader(rw)
+			// fmt.Println(ip)
 			dddns.host.RemoveStreamHandler(protocol.ID(pid))
-			return
+			return ip
 		}
 	}
+	return ""
 }
 
 // StartDaemon endless loop
 func (dddns *DDDNS) StartDaemon() {
-	go dddns.announceLoop(dddns.host.ID().String())
+	go dddns.announceLoop(dddns.ID)
 	dddns.setHandler()
 
 	// This keeps the daemon running
 	select {}
+}
+
+func getBase32FromPubKey(key crypto.PubKey) string {
+	keyBytes, err := crypto.MarshalPublicKey(key)
+	if err != nil {
+		panic(err)
+	}
+	// Return removing the padding (======)
+	return strings.ToLower(base32.StdEncoding.EncodeToString(keyBytes))[0:58]
 }

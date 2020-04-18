@@ -52,10 +52,16 @@ var (
 		Usage: "Enable DNS server.",
 	}
 	// DNSPort ...
-	DNSPort = cli.StringFlag{
+	DNSPort = cli.IntFlag{
 		Name:  "dnsport",
 		Usage: "The port to listen for DNS requests.",
-		Value: "53",
+		Value: 53,
+	}
+	// DNSHost ...
+	DNSHost = cli.StringFlag{
+		Name:  "dnshost",
+		Usage: "The host to listen for DNS requests.",
+		Value: "127.0.0.1",
 	}
 )
 

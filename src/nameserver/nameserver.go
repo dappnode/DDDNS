@@ -1,7 +1,12 @@
 package nameserver
 
 import (
+	//"errors"
+	"github.com/dappnode/dddns/dddns"
 	"github.com/dappnode/dddns/log"
+	"net"
+	"strconv"
+	"strings"
 
 	"github.com/miekg/dns"
 )
@@ -13,20 +18,24 @@ const DDNSZone = "dddns."
 
 type NameServer struct {
 	//log        *log.Logger
-	zoneConfig map[string][]dns.RR
-	dnsClient  *dns.Client
-	dnsServer  *dns.Server
-	started    bool
+	dddns     *dddns.DDDNS
+	dnsServer *dns.Server
+	port      int
+	host      string
+	started   bool
 }
 
-func (s *NameServer) Start(config *config.NodeState, log *log.Logger, options interface{}) error {
-	s.log = log
-	s.started = false
-	s.zoneConfig = make(map[string][]dns.RR)
-	if s.dnsClient == nil {
-		s.dnsClient = new(dns.Client)
-		s.dnsClient.Timeout = 10000000000 // 10 seconds timeout
-	}
+func NewNameServer(port int, host string, dddns *dddns.DDDNS) *NameServer {
+	return &NameServer{port: port, host: host, dddns: dddns, started: false}
+}
+
+func (s *NameServer) Start() error {
+	addr := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.port))
+	s.dnsServer = &dns.Server{Addr: addr, Net: "udp"}
+	dns.HandleFunc(".", s.handleRequest)
+	s.started = true
+	go s.dnsServer.ListenAndServe()
+	log.Infof("Started nameserver on: %s", addr)
 	return nil
 }
 
@@ -37,19 +46,63 @@ func (s *NameServer) Stop() error {
 	}
 	return nil
 }
-
-func (s *NameServer) Start() error {
-	current := s.config.GetCurrent()
-	if current.DNSServer.Enable == false {
-		return nil
+func (s *NameServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
+	domain := r.Question[0].Name
+	log.Infof("Domain request: %s", domain)
+	if strings.HasSuffix(domain, DDNSZone) {
+		log.Infof("Has suffix: %s", DDNSZone)
+		s.resolveRequest(w, r)
+	} else {
+		s.forwardRequest(w, r)
 	}
-	s.LoadConfig(current)
-	s.dnsServer = &dns.Server{Addr: current.DNSServer.Listen, Net: "udp"}
-	dns.HandleFunc(DDNSZone, s.handleRequest)
-	s.started = true
-	go s.dnsServer.ListenAndServe()
-	log.Debugln("Started nameserver on:", current.DNSServer.Listen)
+}
+
+func (s *NameServer) resolveRequest(w dns.ResponseWriter, r *dns.Msg) error {
+	var (
+		rr dns.RR
+		a  net.IP
+	)
+	m := new(dns.Msg)
+	m.SetReply(r)
+	defer w.WriteMsg(m)
+
+	domain := r.Question[0].Name
+
+	target := strings.TrimSuffix(domain, "."+DDNSZone)
+	ip := s.dddns.Resolve(target)
+	a = net.ParseIP(ip)
+	rr = &dns.A{
+		Hdr: dns.RR_Header{Name: DDNSZone, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0},
+		A:   a.To4(),
+	}
+	m.Answer = append(m.Answer, rr)
 	return nil
 }
 
-func (s *NameServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {}
+func (s *NameServer) forwardRequest(w dns.ResponseWriter, r *dns.Msg) {
+	config, _ := dns.ClientConfigFromFile("/etc/resolv.conf")
+	c := new(dns.Client)
+
+	r.RecursionDesired = true
+	server := config.Servers[0]
+
+	if (config.Servers[0] == "127.0.0.1") && (len(config.Servers[1]) > 1) {
+		server = config.Servers[1]
+	} else {
+		server = "1.1.1.1"
+	}
+	log.Infof("Querying %s!\n", server)
+	r, _, err := c.Exchange(r, net.JoinHostPort(server, config.Port))
+	if r == nil {
+		log.Infof("*** error: %s\n", err.Error())
+	} else if r.Rcode != dns.RcodeSuccess {
+		log.Infof("*** invalid answer for name: %s\n", r.Question[0].Name)
+	} else {
+		// Print answer
+		for _, a := range r.Answer {
+			log.Infof("%v\n", a)
+		}
+		w.WriteMsg(r)
+	}
+	return
+}

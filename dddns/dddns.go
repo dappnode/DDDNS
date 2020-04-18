@@ -30,6 +30,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/protocol"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	dhtopts "github.com/libp2p/go-libp2p-kad-dht/opts"
 	multiaddr "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr-net"
 	"github.com/urfave/cli"
@@ -39,7 +40,7 @@ const (
 	// VERSION of the app
 	VERSION = "0.1"
 	// RendezvousRefresh in minutes
-	RendezvousRefresh = 4
+	RendezvousRefresh = 30
 )
 
 // Message ...
@@ -329,7 +330,13 @@ func (dddns *DDDNS) genKeys() error {
 
 func (dddns *DDDNS) bootstrap() {
 	var err error
-	dddns.dht, err = dht.New(dddns.ctx, dddns.host)
+
+	opts := []dhtopts.Option{
+		dhtopts.RoutingTableLatencyTolerance(time.Second * 5),
+		dhtopts.MaxRecordAge(1 * time.Hour),
+	}
+
+	dddns.dht, err = dht.New(dddns.ctx, dddns.host, opts...)
 	if err != nil {
 		panic(err)
 	}

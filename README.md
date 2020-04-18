@@ -1,15 +1,7 @@
-### build
-```
-docker-compose build
-```
+# DDDNS
 
-### run (server)
-```
-docker-compose run dddns  
-```
+## **Work in progress !!**
 
+A dynamic and decentralized DNS system using libp2p.
 
-### run (client)
-```
-docker-compose run dddns -client -pk {server_pk}
-```
+`go build -o dddnscli ./cli/cli.go`

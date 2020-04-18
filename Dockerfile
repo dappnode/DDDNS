@@ -1,9 +1,10 @@
 FROM golang
 
-ADD src /go/src/dddns
+ADD ./ /go/src/dddns
 
 RUN cd /go/src/dddns && \ 
-    go build -o dddns && \
-    cp dddns /usr/local/bin
+    go build -o dddnscli ./cli/cli.go && \
+    cp dddnscli /usr/bin
+RUN chmod +x /usr/bin/dddnscli
 
-ENTRYPOINT [ "dddns" ]
+ENTRYPOINT [ "/usr/bin/dddnscli","daemon","--dnsenable" ]

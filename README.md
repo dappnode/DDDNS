@@ -14,6 +14,8 @@ When running as a daemon, it can act as a DNS proxy, resolving domains with the 
 
 and forwarding the rest to an upstream DNS server.
 
+## Usage
+
 To build:
 
 `$ go build -o dddnscli ./cli/cli.go`
@@ -26,8 +28,10 @@ To run as client:
 
 `$ ./dddnscli client --pubkey baareie5g66lu3ney2e4qfs2x3webynbaeoojkjxnd6dm36daas5k73vba`
 
-TODO:
+## To-Do
 
 - [ ] Tests!
-- [ ] IPv6
+- [ ] IPv6 support
 - [ ] Use a PubSub system
+- [ ] Add [cache](https://github.com/patrickmn/go-cache) for faster resolution
+- [ ] Add a wrapper script to use alternative resolution [(bubblewrap)](https://wiki.archlinux.org/index.php/Bubblewrap)

@@ -19,17 +19,6 @@ var appFlags = []cli.Flag{
 	flags.ProtocolID,
 }
 
-func startNode(ctx *cli.Context) error {
-	dddnsNode := dddns.NewDDDNS(ctx)
-	// Propagate errors here:
-	// dddnsNode, err := dddns.NewDDDNS(ctx)
-	// if err != nil {
-	// 	return err
-	// }
-	dddnsNode.Start()
-	return nil
-}
-
 func noArgs(ctx *cli.Context) error {
 	cli.ShowAppHelp(ctx)
 	return cli.NewExitError("no commands provided", 2)
@@ -48,10 +37,16 @@ func main() {
 			Usage:    "Starts DDDNS in daemon mode",
 			Action: func(ctx *cli.Context) error {
 				log.InitLogger("info", "stdout")
-				dddnsNode := dddns.NewDDDNS(ctx)
+				log.Infof("datadir: %s", ctx.GlobalString(flags.DataDir.Name))
+				log.Infof("port: %d", ctx.GlobalInt(flags.DNSPort.Name))
+				dddnsNode := dddns.NewDDDNS(ctx.GlobalInt(flags.Port.Name),
+					ctx.GlobalString(flags.DataDir.Name),
+					ctx.GlobalString(flags.BootstrapNode.Name),
+					ctx.GlobalString(flags.ProtocolID.Name),
+				)
 				dddnsNode.Start()
 				if ctx.Bool("dnsenable") {
-					nameserver := nameserver.NewNameServer(ctx.Int("dnsport"), ctx.String("dnshost"), dddnsNode)
+					nameserver := nameserver.NewNameServer(ctx.Int(flags.DNSPort.Name), ctx.String(flags.DNSHost.Name), dddnsNode)
 					nameserver.Start()
 					log.Info("DNS enabled")
 				}
@@ -72,13 +67,16 @@ func main() {
 			Action: func(ctx *cli.Context) error {
 				log.InitLogger("info", "stdout")
 				//log.InitLogger("info", os.DevNull)
-				pkey := ctx.String("pubkey")
+				pkey := ctx.String(flags.PublicKey.Name)
 				log.Infof("Name: %s", pkey)
 				if len(pkey) < 52 {
 					log.Error("No valid target provided")
 					os.Exit(1)
 				}
-				dddnsNode := dddns.NewDDDNS(ctx)
+				dddnsNode := dddns.NewDDDNS(ctx.GlobalInt(flags.Port.Name),
+					ctx.GlobalString(flags.DataDir.Name),
+					ctx.GlobalString(flags.BootstrapNode.Name),
+					ctx.GlobalString(flags.ProtocolID.Name))
 				dddnsNode.Start()
 				ip := dddnsNode.Resolve(pkey)
 				fmt.Println(ip)

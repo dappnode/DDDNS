@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -31,7 +32,11 @@ func NewNameServer(port int, host string, dddns *dddns.DDDNS) *NameServer {
 
 func (s *NameServer) Start() error {
 	addr := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.port))
-	s.dnsServer = &dns.Server{Addr: addr, Net: "udp"}
+	s.dnsServer = &dns.Server{Addr: addr,
+		Net:          "udp",
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	dns.HandleFunc(".", s.handleRequest)
 	s.started = true
 	go s.dnsServer.ListenAndServe()

@@ -3,13 +3,16 @@ package dddns
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
+	crypto_rand "crypto/rand"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	//"math"
+	math_rand "math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dappnode/dddns/flags"
 	"github.com/dappnode/dddns/log"
 
 	externalip "github.com/glendc/go-external-ip"
@@ -33,7 +35,6 @@ import (
 	dhtopts "github.com/libp2p/go-libp2p-kad-dht/opts"
 	multiaddr "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr-net"
-	"github.com/urfave/cli"
 )
 
 const (
@@ -43,41 +44,55 @@ const (
 	RendezvousRefresh = 30
 )
 
+// Feed random seed with 32 bytes
+func init() {
+	var b [32]byte
+	_, err := crypto_rand.Read(b[:])
+	if err != nil {
+		panic("cannot seed math/rand package with cryptographically secure random number generator")
+	}
+	math_rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
+}
+
 // Message ...
 // Should include a signature to validate it's the right answer
 type Message struct {
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
 	Data      string `json:"data"`
-	Signature string `json:"signature"`
+	Signature []byte `json:"signature"`
+	Nonce     uint32 `json:"nonce"`
 }
 
 // DDDNS type
+// TODO: Use a config struct
 type DDDNS struct {
 	// Address to listen on
 	Addr string
 
 	// libp2p Host
 	host             host.Host
-	clictx           *cli.Context
 	ctx              context.Context
 	dht              *dht.IpfsDHT
 	routingDiscovery *discovery.RoutingDiscovery
 	privkey          crypto.PrivKey
 	Pubkey           crypto.PubKey
-	ID               string
-	// Public IP if not nil
-	PubIP  *string
-	client bool
-	Port   int64
+	datadir          string
+	// TODO: Should be array
+	bootstrapNode string
+	ProtID        string
+	ID            string
+	Port          int
 }
 
 // NewDDDNS creates a new DDDNS node
-func NewDDDNS(clictx *cli.Context) (dddns *DDDNS) {
-	port := clictx.GlobalInt64(flags.Port.Name)
+func NewDDDNS(port int, datadir string, bnode string, protid string) (dddns *DDDNS) {
 	dddns = &DDDNS{
-		clictx: clictx,
-		Port:   port,
+		ctx:           context.TODO(),
+		Port:          port,
+		datadir:       datadir,
+		bootstrapNode: bnode,
+		ProtID:        protid,
 	}
 	return
 }
@@ -119,14 +134,20 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 
 		ip := dddns.getPublicIP()
 		if err != nil {
-			log.Error("cmd.Run() failed with %s\n", err)
+			log.Error("Failed to get public IP: %s\n", err)
 		}
 
+		// Sign the received nonce
+		noncebytes := make([]byte, 32)
+		binary.LittleEndian.PutUint32(noncebytes, res.Nonce)
+		signature, err := dddns.privkey.Sign(noncebytes)
+
 		m := Message{
-			Type:      "IP",
+			Type:      "A",
 			Timestamp: res.Timestamp,
 			Data:      ip,
-			//Signature: nil,
+			Signature: signature,
+			Nonce:     res.Nonce,
 		}
 
 		msg, err := json.Marshal(m)
@@ -147,7 +168,7 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 	}
 }
 
-func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter) string {
+func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter, id string, nonce uint32) string {
 
 	message, err := rw.ReadString('\n')
 	if err != nil {
@@ -167,35 +188,28 @@ func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter) string {
 	if message != "\n" {
 		// Green console colour:        \x1b[32m
 		// Reset console colour:        \x1b[0m
-		log.Info(fmt.Sprintf("Receiving msg: \x1b[34m%s\x1b[0m", message))
+		log.Info(fmt.Sprintf("Receiving msg: \x1b[32m%s\x1b[0m", message))
 
 	}
-	log.Info(fmt.Sprintf("Message received: \x1b[32m%s\x1b[0m", decoded))
+
+	// TODO: Check signature
+	log.Debug(fmt.Sprintf("Message received: \x1b[32m%s\x1b[0m", decoded))
+
+	pubkey := getPubKeyFromBase32(id)
+	noncebytes := make([]byte, 32)
+	binary.LittleEndian.PutUint32(noncebytes, res.Nonce)
+	v, err := pubkey.Verify(noncebytes, res.Signature)
+	if err != nil {
+		log.Error("Error verifying signature: %s", err)
+		// TODO: Better return
+		return ""
+	}
+	if !v {
+		log.Error("Error: Signature not valid!")
+		return ""
+	}
+
 	return res.Data
-}
-
-func inputLoop(rw *bufio.ReadWriter) {
-	stdReader := bufio.NewReader(os.Stdin)
-
-	for {
-		fmt.Print("> ")
-		sendData, err := stdReader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Error reading from stdin")
-			panic(err)
-		}
-
-		_, err = rw.WriteString(fmt.Sprintf("%s\n", sendData))
-		if err != nil {
-			fmt.Println("Error writing to buffer")
-			panic(err)
-		}
-		err = rw.Flush()
-		if err != nil {
-			fmt.Println("Error flushing buffer")
-			panic(err)
-		}
-	}
 }
 
 // Start initializes the DDNS with all required functions
@@ -222,10 +236,8 @@ func (dddns *DDDNS) announceLoop(rendezvous string) {
 	}
 }
 
-// TODO, add Options
 func (dddns *DDDNS) initHost() {
-	// Use config port here
-	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", 44453))
+	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", dddns.Port))
 	var err error
 	dddns.host, err = libp2p.New(dddns.ctx,
 		libp2p.ListenAddrs(sourceMultiAddr),
@@ -241,8 +253,6 @@ func (dddns *DDDNS) initHost() {
 
 }
 
-// Review method to get IP, it can change in order:
-// getting IP from Addrs: [/ip4/127.0.0.1/tcp/44453 /ip4/173.249.54.25/tcp/44453 /ip4/172.17.0.1/tcp/44453 /ip4/172.33.0.1/tcp/44453 /ip4/172.18.0.1/tcp/44453]
 func (dddns *DDDNS) getPublicIP() string {
 
 	// To avoid an special internal docker subnet
@@ -259,7 +269,7 @@ func (dddns *DDDNS) getPublicIP() string {
 			continue
 		}
 	}
-	// If we fail to get the IP from the libp2p, try fallback from third party, centralized service
+	// If we fail to get the IP from the libp2p, try fallback from third party (centralized services)
 	if ip == "" {
 		consensus := externalip.DefaultConsensus(nil, nil)
 		netIP, err := consensus.ExternalIP()
@@ -277,8 +287,8 @@ func (dddns *DDDNS) initCtx() {
 
 func (dddns *DDDNS) setHandler() {
 
-	pid := dddns.clictx.GlobalString(flags.ProtocolID.Name)
-	dddns.host.SetStreamHandler(protocol.ID(pid), dddns.handleStream)
+	protid := dddns.ProtID
+	dddns.host.SetStreamHandler(protocol.ID(protid), dddns.handleStream)
 }
 
 func (dddns *DDDNS) Close() {
@@ -290,10 +300,10 @@ func (dddns *DDDNS) Close() {
 
 func (dddns *DDDNS) genKeys() error {
 	// Try to get key from fs
-	keyfile := filepath.Join(dddns.clictx.GlobalString(flags.DataDir.Name), "nodekey")
+	keyfile := filepath.Join(dddns.datadir, "nodekey")
 	//If we don't have a nodekey we must to create a new one
 	if _, err := os.Stat(keyfile); os.IsNotExist(err) {
-		dddns.privkey, dddns.Pubkey, err = crypto.GenerateEd25519Key(rand.Reader)
+		dddns.privkey, dddns.Pubkey, err = crypto.GenerateEd25519Key(crypto_rand.Reader)
 		if err != nil {
 			panic(err)
 		}
@@ -304,7 +314,8 @@ func (dddns *DDDNS) genKeys() error {
 		kex := hex.EncodeToString(privateKeyBytes)
 		dddns.ID = getBase32FromPubKey(dddns.Pubkey)
 		// Dir must exist
-		err = os.MkdirAll(dddns.clictx.GlobalString(flags.DataDir.Name), os.ModePerm)
+
+		err = os.MkdirAll(dddns.datadir, os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
@@ -348,7 +359,7 @@ func (dddns *DDDNS) bootstrap() {
 		log.Error(err)
 	}
 	var peers []multiaddr.Multiaddr
-	bootstrapNodeFlag := dddns.clictx.GlobalString(flags.BootstrapNode.Name)
+	bootstrapNodeFlag := dddns.bootstrapNode
 	if len(bootstrapNodeFlag) == 0 {
 		peers = dht.DefaultBootstrapPeers
 	} else {
@@ -392,19 +403,20 @@ func (dddns *DDDNS) Resolve(id string) string {
 		}
 		log.Info(fmt.Sprintf("Found peer: \x1b[34m%s\x1b[0m", peer.ID))
 
-		pid := dddns.clictx.GlobalString(flags.ProtocolID.Name)
-		stream, err := dddns.host.NewStream(dddns.ctx, peer.ID, protocol.ID(pid))
+		protid := dddns.ProtID
+		stream, err := dddns.host.NewStream(dddns.ctx, peer.ID, protocol.ID(protid))
 
 		if err != nil {
 			log.Warn("Connection failed:", err)
 			continue
 		} else {
 			rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
-
+			nonce := math_rand.Uint32()
 			m := Message{
 				Type:      "GET",
 				Timestamp: strconv.FormatInt(time.Now().Unix(), 10),
 				Data:      "",
+				Nonce:     nonce,
 			}
 			message, err := json.Marshal(m)
 			if err != nil {
@@ -423,9 +435,9 @@ func (dddns *DDDNS) Resolve(id string) string {
 				fmt.Println("Error flushing buffer")
 				panic(err)
 			}
-			ip = dddns.clientReader(rw)
+			ip = dddns.clientReader(rw, id, nonce)
 			// fmt.Println(ip)
-			dddns.host.RemoveStreamHandler(protocol.ID(pid))
+			dddns.host.RemoveStreamHandler(protocol.ID(protid))
 			return ip
 		}
 	}
@@ -448,4 +460,21 @@ func getBase32FromPubKey(key crypto.PubKey) string {
 	}
 	// Return removing the padding (======)
 	return strings.ToLower(base32.StdEncoding.EncodeToString(keyBytes))[0:58]
+}
+
+func getPubKeyFromBase32(id string) crypto.PubKey {
+	// Add the removed padding
+	if i := len(id) % 8; i != 0 {
+		id += strings.Repeat("=", 8-i)
+	}
+	// ... and convert back to upper case
+	keyBytes, err := base32.StdEncoding.DecodeString(strings.ToUpper(id))
+	if err != nil {
+		panic(err)
+	}
+	key, _ := crypto.UnmarshalPublicKey(keyBytes)
+	if err != nil {
+		panic(err)
+	}
+	return key
 }

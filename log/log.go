@@ -20,7 +20,7 @@ func InitLogger(logLevel string, output string) {
 	defer logger.Sync()
 	withOptions := logger.WithOptions(zap.AddCallerSkip(1))
 	log = withOptions.Sugar()
-	log.Infof("logger construction succeeded at level %s and output %s", logLevel, output)
+	//log.Infof("logger construction succeeded at level %s and output %s", logLevel, output)
 }
 
 func levelFromString(logLevel string) zapcore.Level {

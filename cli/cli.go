@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/dappnode/dddns/nameserver"
 	"os"
 
 	"github.com/dappnode/dddns/dddns"
 	"github.com/dappnode/dddns/flags"
 	"github.com/dappnode/dddns/log"
+	"github.com/dappnode/dddns/nameserver"
 
 	"github.com/urfave/cli"
 )
@@ -21,7 +21,7 @@ var appFlags = []cli.Flag{
 
 func noArgs(ctx *cli.Context) error {
 	cli.ShowAppHelp(ctx)
-	return cli.NewExitError("no commands provided", 2)
+	return cli.NewExitError("No command provided! See above.", 2)
 }
 
 func main() {
@@ -37,8 +37,6 @@ func main() {
 			Usage:    "Starts DDDNS in daemon mode",
 			Action: func(ctx *cli.Context) error {
 				log.InitLogger(ctx.GlobalString(flags.LogLevel.Name), "stdout")
-				log.Infof("datadir: %s", ctx.GlobalString(flags.DataDir.Name))
-				log.Infof("port: %d", ctx.GlobalInt(flags.DNSPort.Name))
 				dddnsNode := dddns.NewDDDNS(ctx.GlobalInt(flags.Port.Name),
 					ctx.GlobalString(flags.DataDir.Name),
 					ctx.GlobalString(flags.BootstrapNode.Name),

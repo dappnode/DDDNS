@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	//"math"
 	math_rand "math/rand"
 	"net"
 	"os"

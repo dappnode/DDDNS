@@ -7,6 +7,12 @@ import (
 )
 
 var (
+	// LogLevel of output
+	LogLevel = cli.StringFlag{
+		Name:  "loglevel",
+		Usage: "Log level of the output [debug,info,warn,error]",
+		Value: "info",
+	}
 	// BootstrapNode node (optional)
 	BootstrapNode = cli.StringFlag{
 		Name:  "bootstrap-node",

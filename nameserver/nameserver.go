@@ -67,6 +67,8 @@ func (s *NameServer) resolveRequest(w dns.ResponseWriter, r *dns.Msg) error {
 		a  net.IP
 	)
 	m := new(dns.Msg)
+	m.RecursionDesired = true
+
 	m.SetReply(r)
 	defer w.WriteMsg(m)
 

@@ -28,10 +28,22 @@ To run as client:
 
 `$ ./dddnscli client --pubkey baareie5g66lu3ney2e4qfs2x3webynbaeoojkjxnd6dm36daas5k73vba`
 
+If you are running the deamon locally, it can act as a proxy adding the following line at the top of `/etc/resolv.conf` :
+
+`nameserver 127.0.0.1`
+
+then, you should be able to resolve .dddns hosts like the example:
+
+```
+$ dig @localhost baareie5g66lu3ney2e4qfs2x3webynbaeoojkjxnd6dm36daas5k73vba.dddns +short
+108.61.209.8
+```
+
 ## To-Do
 
 - [ ] Tests!
 - [ ] IPv6 support
+- [ ] Improve forwarding (only A now)
 - [ ] Use a PubSub system
 - [ ] Add [cache](https://github.com/patrickmn/go-cache) for faster resolution
 - [ ] Add a wrapper script to use alternative resolution [(bubblewrap)](https://wiki.archlinux.org/index.php/Bubblewrap)

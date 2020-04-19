@@ -12,13 +12,13 @@ import (
 	"github.com/miekg/dns"
 )
 
-// This (optional) DNS compatible nameserver will resolve addresses with the base32 encoding of the pubkey.
-// Example: baareidiv6frlwaqewpu7mweupqvahyuoikki5uqpfk3awlke4baf6juqu.dddns
-
-const DDNSZone = "dddns."
+const (
+	DDNSZone         = "dddns."
+	ResolvConfigFile = "/etc/resolv.conf"
+	ForwardServer    = "1.1.1.1"
+)
 
 type NameServer struct {
-	//log        *log.Logger
 	dddns     *dddns.DDDNS
 	dnsServer *dns.Server
 	port      int
@@ -40,7 +40,7 @@ func (s *NameServer) Start() error {
 	dns.HandleFunc(".", s.handleRequest)
 	s.started = true
 	go s.dnsServer.ListenAndServe()
-	log.Infof("Started nameserver on: %s", addr)
+	log.Infof("Started UDP nameserver on: %s", addr)
 	return nil
 }
 
@@ -55,7 +55,6 @@ func (s *NameServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	domain := r.Question[0].Name
 	log.Infof("Domain request: %s", domain)
 	if strings.HasSuffix(domain, DDNSZone) {
-		log.Infof("Has suffix: %s", DDNSZone)
 		s.resolveRequest(w, r)
 	} else {
 		s.forwardRequest(w, r)
@@ -85,7 +84,11 @@ func (s *NameServer) resolveRequest(w dns.ResponseWriter, r *dns.Msg) error {
 }
 
 func (s *NameServer) forwardRequest(w dns.ResponseWriter, r *dns.Msg) {
-	config, _ := dns.ClientConfigFromFile("/etc/resolv.conf")
+	config, err := dns.ClientConfigFromFile(ResolvConfigFile)
+	if err != nil {
+		log.Errorf("Error loading config file: %s", ResolvConfigFile)
+		return
+	}
 	c := new(dns.Client)
 
 	r.RecursionDesired = true
@@ -94,18 +97,18 @@ func (s *NameServer) forwardRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if (config.Servers[0] == "127.0.0.1") && (len(config.Servers[1]) > 1) {
 		server = config.Servers[1]
 	} else {
-		server = "1.1.1.1"
+		server = ForwardServer
 	}
-	log.Infof("Querying %s!\n", server)
-	r, _, err := c.Exchange(r, net.JoinHostPort(server, config.Port))
+	log.Infof("Forwarding query to: %s", server)
+	r, _, err = c.Exchange(r, net.JoinHostPort(server, config.Port))
 	if r == nil {
-		log.Infof("*** error: %s\n", err.Error())
+		log.Debugf("Error querying: %s", err.Error())
 	} else if r.Rcode != dns.RcodeSuccess {
-		log.Infof("*** invalid answer for name: %s\n", r.Question[0].Name)
+		log.Debugf("Invalid answer for name: %s", r.Question[0].Name)
 	} else {
 		// Print answer
 		for _, a := range r.Answer {
-			log.Infof("%v\n", a)
+			log.Debugf("%v\n", a)
 		}
 		w.WriteMsg(r)
 	}

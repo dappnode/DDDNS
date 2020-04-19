@@ -28,5 +28,6 @@ To run as client:
 
 TODO:
 
+- [ ] Tests!
 - [ ] IPv6
 - [ ] Use a PubSub system

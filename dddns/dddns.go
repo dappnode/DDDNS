@@ -37,9 +37,10 @@ import (
 )
 
 const (
-	// VERSION of the app
+	// VERSION ...
 	VERSION = "0.1"
-	// RendezvousRefresh in minutes
+	// RendezvousRefresh time in minutes
+	// With larger values node may not be reachable
 	RendezvousRefresh = 4
 )
 
@@ -129,7 +130,7 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 			return
 		}
 
-		ip := dddns.getPublicIP()
+		ip, err := dddns.getPublicIP()
 		if err != nil {
 			log.Errorf("Failed to get public IP: %s\n", err)
 			return
@@ -243,7 +244,7 @@ func (dddns *DDDNS) initHost() {
 
 }
 
-func (dddns *DDDNS) getPublicIP() string {
+func (dddns *DDDNS) getPublicIP() (string, error) {
 
 	// To avoid an internal docker subnet
 	dnSubnet := "172.33.0.0/16"
@@ -265,11 +266,11 @@ func (dddns *DDDNS) getPublicIP() string {
 		netIP, err := consensus.ExternalIP()
 		if err != nil {
 			log.Errorf("Error getting getting IP from external source: %s", err)
-			return ""
+			return "", err
 		}
 		ip = netIP.String()
 	}
-	return ip
+	return ip, nil
 }
 
 func (dddns *DDDNS) Close() {

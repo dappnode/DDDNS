@@ -17,6 +17,7 @@ var appFlags = []cli.Flag{
 	flags.DataDir,
 	flags.Port,
 	flags.ProtocolID,
+	flags.LogLevel,
 }
 
 func noArgs(ctx *cli.Context) error {
@@ -46,7 +47,6 @@ func main() {
 				if ctx.Bool("dnsenable") {
 					nameserver := nameserver.NewNameServer(ctx.Int(flags.DNSPort.Name), ctx.String(flags.DNSHost.Name), dddnsNode)
 					nameserver.Start()
-					log.Info("DNS enabled")
 				}
 				dddnsNode.StartDaemon()
 				return nil

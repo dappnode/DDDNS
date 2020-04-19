@@ -41,7 +41,7 @@ const (
 	// VERSION of the app
 	VERSION = "0.1"
 	// RendezvousRefresh in minutes
-	RendezvousRefresh = 30
+	RendezvousRefresh = 4
 )
 
 // Feed random seed with 32 bytes
@@ -49,7 +49,7 @@ func init() {
 	var b [32]byte
 	_, err := crypto_rand.Read(b[:])
 	if err != nil {
-		panic("cannot seed math/rand package with cryptographically secure random number generator")
+		panic("Cannot seed with cryptographically secure random generator.")
 	}
 	math_rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
 }
@@ -111,30 +111,29 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 			return
 		}
 		if err != nil {
-			fmt.Println("Error reading from buffer: ", err)
+			log.Errorf("Error reading from buffer: ", err)
+			return
 		}
 
 		decoded, err := base64.StdEncoding.DecodeString(message)
 		if err != nil {
-			fmt.Println("Error decoding: ", err)
+			log.Errorf("Error decoding: ", err)
+			return
 		}
-		if message != "\n" {
-			// Green console colour:        \x1b[32m
-			// Reset console colour:        \x1b[0m
-			log.Info(fmt.Sprintf("Receiving msg: \x1b[34m%s\x1b[0m", message))
-
-		}
-		log.Info(fmt.Sprintf("Message received: \x1b[34m%s\x1b[0m", decoded))
+		log.Debug(fmt.Sprintf("Receiving msg: \x1b[34m%s\x1b[0m", message))
+		log.Debug(fmt.Sprintf("Message received: \x1b[34m%s\x1b[0m", decoded))
 
 		res := &Message{}
 		err = json.Unmarshal(decoded, res)
 		if err != nil {
-			log.Error(err)
+			log.Errorf("Error decoding: ", err)
+			return
 		}
 
 		ip := dddns.getPublicIP()
 		if err != nil {
-			log.Error("Failed to get public IP: %s\n", err)
+			log.Errorf("Failed to get public IP: %s\n", err)
+			return
 		}
 
 		// Sign the received nonce
@@ -152,18 +151,16 @@ func (dddns *DDDNS) reader(rw *bufio.ReadWriter) {
 
 		msg, err := json.Marshal(m)
 		if err != nil {
-			panic(err)
+			log.Errorf("Error encoding message: %s\n", err)
+			return
 		}
-
 		_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(msg)))
 		if err != nil {
-			fmt.Println("Error writing to buffer")
-			panic(err)
+			log.Errorf("Error writing to buffer")
 		}
 		err = rw.Flush()
 		if err != nil {
-			fmt.Println("Error flushing buffer")
-			panic(err)
+			log.Errorf("Error flushing buffer")
 		}
 	}
 }
@@ -185,14 +182,7 @@ func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter, id string, nonce uint32) 
 	if message == "" {
 		return message
 	}
-	if message != "\n" {
-		// Green console colour:        \x1b[32m
-		// Reset console colour:        \x1b[0m
-		log.Info(fmt.Sprintf("Receiving msg: \x1b[32m%s\x1b[0m", message))
-
-	}
-
-	// TODO: Check signature
+	log.Debug(fmt.Sprintf("Receiving msg: \x1b[32m%s\x1b[0m", message))
 	log.Debug(fmt.Sprintf("Message received: \x1b[32m%s\x1b[0m", decoded))
 
 	pubkey := getPubKeyFromBase32(id)
@@ -200,8 +190,8 @@ func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter, id string, nonce uint32) 
 	binary.LittleEndian.PutUint32(noncebytes, res.Nonce)
 	v, err := pubkey.Verify(noncebytes, res.Signature)
 	if err != nil {
-		log.Error("Error verifying signature: %s", err)
-		// TODO: Better return
+		log.Errorf("Error verifying signature: %s", err)
+		// TODO: Better return / error handling
 		return ""
 	}
 	if !v {
@@ -214,9 +204,10 @@ func (dddns *DDDNS) clientReader(rw *bufio.ReadWriter, id string, nonce uint32) 
 
 // Start initializes the DDNS with all required functions
 func (dddns *DDDNS) Start() {
-	dddns.initCtx()
+	dddns.ctx = context.Background()
 	err := dddns.genKeys()
 	if err != nil {
+		log.Errorf("Error generating keys: %s", err)
 		panic(err)
 	}
 	dddns.initHost()
@@ -228,9 +219,8 @@ func (dddns *DDDNS) announceLoop(rendezvous string) {
 	for {
 		if dddns.dht != nil {
 			routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
-			log.Info("Announcing ourselves...")
 			discovery.Advertise(dddns.ctx, routingDiscovery, rendezvous)
-			log.Infof("Successfully announced! at: %s", rendezvous)
+			log.Debugf("Announced to rendezvous at: %s", rendezvous)
 		}
 		time.Sleep(RendezvousRefresh * time.Minute)
 	}
@@ -247,7 +237,8 @@ func (dddns *DDDNS) initHost() {
 		libp2p.DefaultSecurity,
 	)
 	if err != nil {
-		panic(err)
+		log.Errorf("Error initalizing libp2p host: %s", err)
+		return
 	}
 	log.Infof("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", dddns.host.ID())
 
@@ -255,12 +246,12 @@ func (dddns *DDDNS) initHost() {
 
 func (dddns *DDDNS) getPublicIP() string {
 
-	// To avoid an special internal docker subnet
+	// To avoid an internal docker subnet
 	dnSubnet := "172.33.0.0/16"
 	_, ipnetDn, _ := net.ParseCIDR(dnSubnet)
 
 	addrs := dddns.host.Addrs()
-	log.Infof("getting IP from Addrs: %v", addrs)
+	log.Debugf("getting IP from Addrs: %v", addrs)
 	var ip string = ""
 	for _, addr := range addrs {
 		netaddr, _ := manet.ToNetAddr(addr)
@@ -274,21 +265,12 @@ func (dddns *DDDNS) getPublicIP() string {
 		consensus := externalip.DefaultConsensus(nil, nil)
 		netIP, err := consensus.ExternalIP()
 		if err != nil {
-			panic(err)
+			log.Errorf("Error getting getting IP from external source: %s", err)
+			return ""
 		}
 		ip = netIP.String()
 	}
 	return ip
-}
-
-func (dddns *DDDNS) initCtx() {
-	dddns.ctx = context.Background()
-}
-
-func (dddns *DDDNS) setHandler() {
-
-	protid := dddns.ProtID
-	dddns.host.SetStreamHandler(protocol.ID(protid), dddns.handleStream)
 }
 
 func (dddns *DDDNS) Close() {
@@ -305,11 +287,13 @@ func (dddns *DDDNS) genKeys() error {
 	if _, err := os.Stat(keyfile); os.IsNotExist(err) {
 		dddns.privkey, dddns.Pubkey, err = crypto.GenerateEd25519Key(crypto_rand.Reader)
 		if err != nil {
-			panic(err)
+			log.Errorf("Error generating key: %s", err)
+			return err
 		}
 		privateKeyBytes, err := crypto.MarshalPrivateKey(dddns.privkey)
 		if err != nil {
-			panic(err)
+			log.Errorf("Error marshalling key: %s", err)
+			return err
 		}
 		kex := hex.EncodeToString(privateKeyBytes)
 		dddns.ID = getBase32FromPubKey(dddns.Pubkey)
@@ -317,21 +301,25 @@ func (dddns *DDDNS) genKeys() error {
 
 		err = os.MkdirAll(dddns.datadir, os.ModePerm)
 		if err != nil {
-			panic(err)
+			log.Errorf("Error creating data directory: %s", err)
+			return err
 		}
 		ioutil.WriteFile(keyfile, []byte(kex), 0600)
 	} else {
 		kex, _ := ioutil.ReadFile(keyfile)
 		if err != nil {
-			panic(err)
+			log.Errorf("Error reading key: %s", err)
+			return err
 		}
 		privateKeyBytes, err := hex.DecodeString(string(kex))
 		if err != nil {
-			panic(err)
+			log.Errorf("Error decoding key: %s", err)
+			return err
 		}
 		dddns.privkey, err = crypto.UnmarshalPrivateKey(privateKeyBytes)
 		if err != nil {
-			panic(err)
+			log.Errorf("Error unmarshalling key: %s", err)
+			return err
 		}
 		dddns.Pubkey = dddns.privkey.GetPublic()
 		dddns.ID = getBase32FromPubKey(dddns.Pubkey)
@@ -349,23 +337,24 @@ func (dddns *DDDNS) bootstrap() {
 
 	dddns.dht, err = dht.New(dddns.ctx, dddns.host, opts...)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating DHT: %s", err)
+		return
 	}
 
 	// Bootstrap the DHT. In the default configuration, this spawns a Background
 	// thread that will refresh the peer table every five minutes.
 	log.Debug("Bootstrapping the DHT")
 	if err = dddns.dht.Bootstrap(dddns.ctx); err != nil {
-		log.Error(err)
+		log.Fatalf("Error bootstrapping DHT: %s", err)
+		return
 	}
 	var peers []multiaddr.Multiaddr
-	bootstrapNodeFlag := dddns.bootstrapNode
-	if len(bootstrapNodeFlag) == 0 {
+	if len(dddns.bootstrapNode) == 0 {
 		peers = dht.DefaultBootstrapPeers
 	} else {
-		addr, err := multiaddr.NewMultiaddr(bootstrapNodeFlag)
+		addr, err := multiaddr.NewMultiaddr(dddns.bootstrapNode)
 		if err != nil {
-			log.Error(err)
+			log.Errorf("Error getting multiaddr from %s: %s", dddns.bootstrapNode, err)
 		}
 		peers = append(peers, addr)
 	}
@@ -378,9 +367,9 @@ func (dddns *DDDNS) bootstrap() {
 		go func() {
 			defer wg.Done()
 			if err := dddns.host.Connect(dddns.ctx, *peerinfo); err != nil {
-				log.Warn(err)
+				log.Warnf("Error connecting to peer: %s", err)
 			} else {
-				log.Info("Connection established with bootstrap node:", *peerinfo)
+				log.Debug("Connection established with bootstrap node:", *peerinfo)
 			}
 		}()
 	}
@@ -391,9 +380,10 @@ func (dddns *DDDNS) bootstrap() {
 func (dddns *DDDNS) Resolve(id string) string {
 	var ip string
 	routingDiscovery := discovery.NewRoutingDiscovery(dddns.dht)
-	log.Info(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m", id))
+	log.Debug(fmt.Sprintf("Searching for peer identity \x1b[34m%s\x1b[0m", id))
 	peerChan, err := routingDiscovery.FindPeers(dddns.ctx, id)
 	if err != nil {
+		log.Error("Error finding peers: %s", err)
 		panic(err)
 	}
 
@@ -401,7 +391,7 @@ func (dddns *DDDNS) Resolve(id string) string {
 		if peer.ID == dddns.host.ID() {
 			continue
 		}
-		log.Info(fmt.Sprintf("Found peer: \x1b[34m%s\x1b[0m", peer.ID))
+		log.Debug(fmt.Sprintf("Found peer: \x1b[34m%s\x1b[0m", peer.ID))
 
 		protid := dddns.ProtID
 		stream, err := dddns.host.NewStream(dddns.ctx, peer.ID, protocol.ID(protid))
@@ -420,23 +410,23 @@ func (dddns *DDDNS) Resolve(id string) string {
 			}
 			message, err := json.Marshal(m)
 			if err != nil {
-				panic(err)
+				log.Errorf("Error encoding message: %s\n", err)
+				return ""
 			}
-			log.Info(fmt.Sprintf("Sending msg: \x1b[95m%s\x1b[0m", message))
+
+			log.Debugf(fmt.Sprintf("Sending msg: \x1b[95m%s\x1b[0m", message))
 
 			_, err = rw.WriteString(fmt.Sprintf("%s\n", base64.StdEncoding.EncodeToString(message)))
 			if err != nil {
-				fmt.Println("Error writing to buffer")
-				panic(err)
+				log.Errorf("Error writing to buffer: %s", err)
+				return ""
 			}
-
 			err = rw.Flush()
 			if err != nil {
-				fmt.Println("Error flushing buffer")
-				panic(err)
+				log.Errorf("Error flushing buffer: %s", err)
+				return ""
 			}
 			ip = dddns.clientReader(rw, id, nonce)
-			// fmt.Println(ip)
 			dddns.host.RemoveStreamHandler(protocol.ID(protid))
 			return ip
 		}
@@ -446,8 +436,9 @@ func (dddns *DDDNS) Resolve(id string) string {
 
 // StartDaemon endless loop
 func (dddns *DDDNS) StartDaemon() {
+
+	dddns.host.SetStreamHandler(protocol.ID(dddns.ProtID), dddns.handleStream)
 	go dddns.announceLoop(dddns.ID)
-	dddns.setHandler()
 
 	// This keeps the daemon running
 	select {}
@@ -458,8 +449,8 @@ func getBase32FromPubKey(key crypto.PubKey) string {
 	if err != nil {
 		panic(err)
 	}
-	// Return removing the padding (======)
-	return strings.ToLower(base32.StdEncoding.EncodeToString(keyBytes))[0:58]
+	// Return trimming the padding (======)
+	return strings.Trim(strings.ToLower(base32.StdEncoding.EncodeToString(keyBytes)), "=")
 }
 
 func getPubKeyFromBase32(id string) crypto.PubKey {

@@ -36,7 +36,7 @@ func main() {
 			Category: "daemon",
 			Usage:    "Starts DDDNS in daemon mode",
 			Action: func(ctx *cli.Context) error {
-				log.InitLogger("info", "stdout")
+				log.InitLogger(ctx.GlobalString(flags.LogLevel.Name), "stdout")
 				log.Infof("datadir: %s", ctx.GlobalString(flags.DataDir.Name))
 				log.Infof("port: %d", ctx.GlobalInt(flags.DNSPort.Name))
 				dddnsNode := dddns.NewDDDNS(ctx.GlobalInt(flags.Port.Name),
@@ -65,10 +65,8 @@ func main() {
 			Category: "client",
 			Usage:    "Starts DDDNS in client mode",
 			Action: func(ctx *cli.Context) error {
-				log.InitLogger("info", "stdout")
-				//log.InitLogger("info", os.DevNull)
+				log.InitLogger(ctx.GlobalString(flags.LogLevel.Name), "stdout")
 				pkey := ctx.String(flags.PublicKey.Name)
-				log.Infof("Name: %s", pkey)
 				if len(pkey) < 52 {
 					log.Error("No valid target provided")
 					os.Exit(1)
@@ -92,7 +90,6 @@ func main() {
 	app.Flags = appFlags
 
 	if err := app.Run(os.Args); err != nil {
-		//log.Error("Error.")
 		os.Exit(1)
 	}
 

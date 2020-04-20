@@ -2,8 +2,8 @@ package nameserver
 
 import (
 	//"errors"
-	"github.com/dappnode/dddns/dddns"
-	"github.com/dappnode/dddns/log"
+	"github.com/dappnode/dddns/src/dddns"
+	"github.com/dappnode/dddns/src/log"
 	"net"
 	"strconv"
 	"strings"

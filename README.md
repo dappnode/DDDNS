@@ -18,15 +18,15 @@ and forwarding the rest to an upstream DNS server.
 
 To build:
 
-`$ go build -o dddnscli ./cli/cli.go`
+`$ go build ./cmd/dddns/dddns.go`
 
 To run as a daemon:
 
-`$ ./dddnscli daemon [--dnsenable]`
+`$ ./dddns daemon [--dnsenable]`
 
 To run as client:
 
-`$ ./dddnscli client --pubkey baareie5g66lu3ney2e4qfs2x3webynbaeoojkjxnd6dm36daas5k73vba`
+`$ ./dddns client --pubkey baareie5g66lu3ney2e4qfs2x3webynbaeoojkjxnd6dm36daas5k73vba`
 
 If you are running the deamon locally, it can act as a proxy adding the following line at the top of `/etc/resolv.conf` :
 
@@ -43,7 +43,8 @@ $ dig @localhost baareie5g66lu3ney2e4qfs2x3webynbaeoojkjxnd6dm36daas5k73vba.dddn
 
 - [ ] Tests!
 - [ ] IPv6 support
+- [ ] Use channels
 - [ ] Improve forwarding (only A now)
-- [ ] Use a PubSub system
+- [ ] Use a simple PubSub system, like [subpub](https://gitlab.com/vocdoni/go-dvote/-/blob/master/subpub/subpub.go)
 - [ ] Add [cache](https://github.com/patrickmn/go-cache) for faster resolution
 - [ ] Add a wrapper script to use alternative resolution [(bubblewrap)](https://wiki.archlinux.org/index.php/Bubblewrap)

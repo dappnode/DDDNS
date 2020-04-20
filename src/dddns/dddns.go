@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dappnode/dddns/log"
+	"github.com/dappnode/dddns/src/log"
 
 	externalip "github.com/glendc/go-external-ip"
 	libp2p "github.com/libp2p/go-libp2p"

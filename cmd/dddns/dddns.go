@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dappnode/dddns/dddns"
-	"github.com/dappnode/dddns/flags"
-	"github.com/dappnode/dddns/log"
-	"github.com/dappnode/dddns/nameserver"
+	"github.com/dappnode/dddns/src/dddns"
+	"github.com/dappnode/dddns/src/flags"
+	"github.com/dappnode/dddns/src/log"
+	"github.com/dappnode/dddns/src/nameserver"
 
 	"github.com/urfave/cli"
 )

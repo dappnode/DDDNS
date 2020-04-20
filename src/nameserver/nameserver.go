@@ -2,8 +2,8 @@ package nameserver
 
 import (
 	//"errors"
-	"github.com/dappnode/dddns/dddns"
-	"github.com/dappnode/dddns/log"
+	"github.com/dappnode/dddns/src/dddns"
+	"github.com/dappnode/dddns/src/log"
 	"net"
 	"strconv"
 	"strings"
@@ -67,6 +67,8 @@ func (s *NameServer) resolveRequest(w dns.ResponseWriter, r *dns.Msg) error {
 		a  net.IP
 	)
 	m := new(dns.Msg)
+	m.RecursionDesired = true
+
 	m.SetReply(r)
 	defer w.WriteMsg(m)
 

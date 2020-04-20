@@ -4,7 +4,7 @@ services:
     build: .
     image: "dddns:0.0.1"
     volumes:
-      - "data:/data"
+      - "data:/root/.dddns"
     ports:
       - "44453:44453"
       - "53:53/udp"

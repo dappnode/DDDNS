@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dappnode/dddns/log"
+	"github.com/dappnode/dddns/src/log"
 
 	externalip "github.com/glendc/go-external-ip"
 	libp2p "github.com/libp2p/go-libp2p"
@@ -240,7 +240,7 @@ func (dddns *DDDNS) initHost() {
 		log.Errorf("Error initalizing libp2p host: %s", err)
 		return
 	}
-	log.Infof("Host created. Our libp2p PeerID is: \x1b[32m%s\x1b[0m", dddns.host.ID())
+	log.Infof("Host created. Our libp2p PeerID is: %s", dddns.host.ID())
 
 }
 
@@ -324,6 +324,7 @@ func (dddns *DDDNS) genKeys() error {
 		dddns.Pubkey = dddns.privkey.GetPublic()
 		dddns.ID = getBase32FromPubKey(dddns.Pubkey)
 	}
+	log.Infof("Our node ID is: \x1b[32m%s\x1b[0m", dddns.ID)
 	return nil
 }
 

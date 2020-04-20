@@ -26,10 +26,10 @@ func noArgs(ctx *cli.Context) error {
 }
 
 func main() {
-
 	app := cli.NewApp()
 	app.Name = "dddns"
 	app.Version = dddns.VERSION
+	app.Usage = "A dynamic and distributed DNS system."
 	app.Action = noArgs
 	app.Commands = []cli.Command{
 		{
@@ -45,12 +45,14 @@ func main() {
 				)
 				dddnsNode.Start()
 				if ctx.Bool("dnsenable") {
-					nameserver := nameserver.NewNameServer(ctx.Int(flags.DNSPort.Name), ctx.String(flags.DNSHost.Name), dddnsNode)
+					nameserver := nameserver.NewNameServer(
+						ctx.Int(flags.DNSPort.Name),
+						ctx.String(flags.DNSHost.Name),
+						dddnsNode)
 					nameserver.Start()
 				}
 				dddnsNode.StartDaemon()
 				return nil
-
 			},
 			Flags: []cli.Flag{
 				flags.DNSEnable,

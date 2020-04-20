@@ -13,9 +13,12 @@ import (
 )
 
 const (
-	DDNSZone         = "dddns."
+	// DDNSZone is the DNS suffix (TLD)
+	DDNSZone = "dddns."
+	// ResolvConfigFile is the file to look for a fallback nameserver
 	ResolvConfigFile = "/etc/resolv.conf"
-	ForwardServer    = "1.1.1.1"
+	// ForwardServer is a fallback DNS server is no alternative is found in ResolvConfigFile
+	ForwardServer = "1.1.1.1"
 )
 
 type NameServer struct {
@@ -39,7 +42,12 @@ func (s *NameServer) Start() error {
 	}
 	dns.HandleFunc(".", s.handleRequest)
 	s.started = true
-	go s.dnsServer.ListenAndServe()
+	go func() {
+		if err := s.dnsServer.ListenAndServe(); err != nil {
+			log.Fatalf("Error starting nameserver: %s", err)
+			panic(err)
+		}
+	}()
 	log.Infof("Started UDP nameserver on: %s", addr)
 	return nil
 }

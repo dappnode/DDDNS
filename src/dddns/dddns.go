@@ -248,7 +248,10 @@ func (dddns *DDDNS) getPublicIP() (string, error) {
 
 	// To avoid an internal docker subnet
 	dnSubnet := "172.33.0.0/16"
-	_, ipnetDn, _ := net.ParseCIDR(dnSubnet)
+	_, ipnetDn, err := net.ParseCIDR(dnSubnet)
+	if err != nil {
+		log.Errorf("Error parsing CIDR: %s", err)
+	}
 
 	addrs := dddns.host.Addrs()
 	log.Debugf("getting IP from Addrs: %v", addrs)

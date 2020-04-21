@@ -254,7 +254,7 @@ func (dddns *DDDNS) getPublicIP() (string, error) {
 	}
 
 	addrs := dddns.host.Addrs()
-	log.Debugf("getting IP from Addrs: %v", addrs)
+	log.Debugf("Getting IP from Addrs: %v", addrs)
 	var ip string = ""
 	for _, addr := range addrs {
 		netaddr, _ := manet.ToNetAddr(addr)
@@ -273,6 +273,7 @@ func (dddns *DDDNS) getPublicIP() (string, error) {
 		}
 		ip = netIP.String()
 	}
+	log.Infof("Retrieved public IP: %s", ip)
 	return ip, nil
 }
 
@@ -328,6 +329,7 @@ func (dddns *DDDNS) genKeys() error {
 		dddns.ID = getBase32FromPubKey(dddns.Pubkey)
 	}
 	log.Infof("Our node ID is: \x1b[32m%s\x1b[0m", dddns.ID)
+	log.Infof("Our DDDNS domain is: \x1b[33m%s.dddns\x1b[0m", dddns.ID)
 	return nil
 }
 

@@ -85,7 +85,6 @@ In order to run the nameserver daemon a normal user, you need to add capabilitie
 
 - [ ] Tests!
 - [ ] IPv6 support
-- [ ] Use channels
 - [ ] Improve forwarding (only A now)
 - [ ] Use a simple PubSub system, like [subpub](https://gitlab.com/vocdoni/go-dvote/-/blob/master/subpub/subpub.go)
 - [ ] Add [cache](https://github.com/patrickmn/go-cache) for faster resolution

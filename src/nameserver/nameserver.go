@@ -85,6 +85,7 @@ func (s *NameServer) resolveRequest(w dns.ResponseWriter, r *dns.Msg) error {
 	target := strings.TrimSuffix(domain, "."+DDNSZone)
 	ip := s.dddns.Resolve(target)
 	a = net.ParseIP(ip)
+	// TODO: Add AAAA (ipv6)
 	rr = &dns.A{
 		Hdr: dns.RR_Header{Name: DDNSZone, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0},
 		A:   a.To4(),
